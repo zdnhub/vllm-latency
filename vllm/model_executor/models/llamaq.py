@@ -362,10 +362,14 @@ class LlamaQForCausalLM(nn.Module):
     _row_parallel_weights_fp16 = []
 
     _column_parallel_weights_int4 = [
-        "qkv_proj.weight", "gate_proj.weight", "up_proj.weight"
+        "qkv_proj.qweight", "gate_proj.qweight", "up_proj.qweight",
+        "qkv_proj.qzeros", "gate_proj.qzeros", "up_proj.qzeros",
+        "qkv_proj.scales", "gate_proj.scales", "up_proj.scales",
     ]
 
-    _row_parallel_weights_int4 = ["o_proj.weight", "down_proj.weight"]
+    _row_parallel_weights_int4 = ["o_proj.qweight", "down_proj.qweight", 
+                                  "o_proj.qzeros", "down_proj.qzeros",
+                                  "o_proj.scales", "down_proj.scales"]
 
 
     def load_weights(self,
@@ -553,7 +557,7 @@ class LlamaQForCausalLM(nn.Module):
                 loaded_weight = torch.cat([loaded_weight, extra_rows], dim=0)
 
             param = state_dict[name]
-            print(f"fp16 layer name: {name}")
+            # print(f"fp16 layer name: {name}")
             load_tensor_parallel_weights(param, loaded_weight, name,
                                          self._column_parallel_weights_fp16,
                                          self._row_parallel_weights_fp16,
@@ -566,9 +570,6 @@ class LlamaQForCausalLM(nn.Module):
 
             if "embed_tokens" in name or "lm_head" in name:
                 continue
-            
-            # if "self_attn" in name:
-            #     continue
 
             if "input_layernorm" in name or "post_attention_layernorm" in name:
                 continue
@@ -581,7 +582,7 @@ class LlamaQForCausalLM(nn.Module):
                 ["q_proj", "k_proj", "v_proj"]):
                 if att_weight_name not in name:
                     continue
-                print(f"int4 layer name: {name}")
+                # print(f"int4 layer name: {name}")
                 param = state_dict[name.replace(att_weight_name, "qkv_proj")]
                 shard_size = param.shape[0] // 3
                 loaded_weight = loaded_weight[
@@ -606,4 +607,4 @@ class LlamaQForCausalLM(nn.Module):
                                          self._row_parallel_weights_int4,
                                          tensor_model_parallel_rank)
         
-        print(f"state dict keys: {state_dict.keys()}")
+        # print(f"state dict keys: {state_dict.keys()}")
