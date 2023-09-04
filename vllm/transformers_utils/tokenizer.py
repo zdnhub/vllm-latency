@@ -1,9 +1,11 @@
-from typing import List, Tuple, Union
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import List, Tuple, Union, Dict, Optional, Callable
 
 from transformers import (AutoTokenizer, PreTrainedTokenizer,
                           PreTrainedTokenizerFast)
 
 from vllm.logger import init_logger
+from vllm.sampling_params import SamplingParams
 
 logger = init_logger(__name__)
 
@@ -116,3 +118,150 @@ def detokenize_incrementally(
         sub_texts.append(sub_text)
     output_text = " ".join(sub_texts)
     return new_token, output_text
+
+
+class SequenceDetokenizeState:
+    def __init__(self, seq_id: int, stop_strings: List[str]) -> None:
+        self.seq_id: int = seq_id
+        self.stop_strings: List[str] = stop_strings
+        self.output_text: str = ""
+        self.output_tokens: List[str] = []
+        self.stop_string_matched = False
+
+
+class Detokenizer:
+    def __init__(
+        self, 
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+        tokenizer_creator: Callable[[], Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
+    ) -> None:
+        if tokenizer:
+            self.tokenizer = tokenizer
+        else:
+            self.tokenizer = tokenizer_creator()
+        self.decoding_sequences: Dict[int, SequenceDetokenizeState] = dict()
+        self.decoding_requests: Dict[str, List[int]] = dict()
+
+    def add_sequence(self, request_id: str, seq_id: int, stop_strings: List[str]) -> None:
+        self.decoding_sequences[seq_id] = SequenceDetokenizeState(seq_id, stop_strings) 
+        if request_id not in self.decoding_requests:
+            self.decoding_requests[request_id] = []
+        self.decoding_requests[request_id].append(seq_id)
+
+    def detokenize_last_token(self, seq_id: int, last_token_id: int) -> Tuple[bool, str]:
+        assert seq_id in self.decoding_sequences, f"{self.decoding_sequences.keys()}"
+        state = self.decoding_sequences[seq_id]
+
+        new_token, new_output_text = detokenize_incrementally(
+            self.tokenizer,
+            state.output_tokens,
+            last_token_id,
+            skip_special_tokens=True,
+        )
+        if new_token is None:
+            return state.stop_string_matched, state.output_text
+
+        for stop_str in state.stop_strings:
+            if new_output_text.endswith(stop_str):
+                # Truncate the output text so that the stop string is
+                # not included in the output.
+                new_output_text = new_output_text[:-len(stop_str)]
+                # TODO: propogate stop_string_matched state
+                state.stop_string_matched = True
+                break
+
+        state.output_tokens.append(new_token)
+        state.output_text = new_output_text
+
+        return state.stop_string_matched, state.output_text
+
+    def get_output_text(self, seq_id: int) -> str:
+        #if seq_id in self.decoding_sequences:
+        return self.decoding_sequences[seq_id].output_text
+        #return ""
+
+    def free_request(self, request_id: str) -> None:
+        if request_id not in self.decoding_requests():
+            return
+        seq_ids = self.decoding_requests.pop(request_id)
+        for seq_id in seq_ids:
+            self.decoding_sequences.pop(seq_id)
+
+    def stop_string_matched(self, seq_id: int) -> bool:
+        assert seq_id in self.decoding_sequences
+        return self.decoding_sequences[seq_id].stop_string_matched
+
+
+class DummyDetokenizer:
+    def __init__(
+        self, 
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+    ) -> None:
+        pass
+
+    def add_sequence(self, request_id: str, seq_id: int, stop_strings: List[str]) -> None:
+        pass
+
+    def detokenize_last_token(self, seq_id: int, last_token_id: int) -> Tuple[bool, str]:
+        return False, ""
+
+    def get_output_text(self, seq_id: int) -> str:
+        return ""
+
+    def free_request(self, request_id: str) -> None:
+        pass
+
+    def stop_string_matched(self, seq_id: int) -> bool:
+        return False
+
+
+class ThreadedSequenceState:
+    def __init__(self, seq_id: int) -> None:
+        self.seq_id: int = seq_id
+        self.pending_future: Optional[Future] = None
+        self.output_text: str = ""
+        self.stop_string_matched = False
+
+    def _sync_future(self):
+        #if self.pending_future and self.pending_future.done():
+        if self.pending_future:
+            self.stop_string_matched, self.output_text = self.pending_future.result()
+            self.pending_future = None
+
+    def get_output_text(self):
+        self._sync_future()
+        return self.output_text
+
+    def set_future(self, future: Future):
+        self.pending_future = future
+
+    def get_stop_string_matched(self): 
+        self._sync_future()
+        return self.stop_string_matched
+
+
+class RayDetokenizer:
+    def __init__(
+        self, 
+        tokenizer_creator: Callable[[], Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
+    ) -> None:
+        import ray
+        self.delegate_detokenizer = ray.remote(Detokenizer).remote(tokenizer=None, tokenizer_creator=tokenizer_creator)
+        self.state: Dict[int, ThreadedSequenceState] = dict()
+
+    def add_sequence(self, request_id: str, seq_id: int, stop_strings: List[str]) -> None:
+        self.state[seq_id] = ThreadedSequenceState(seq_id)
+        self.delegate_detokenizer.add_sequence.remote(request_id, seq_id, stop_strings)
+
+    def detokenize_last_token(self, seq_id: int, last_token_id: int) -> None:
+        self.state[seq_id].set_future(
+            self.delegate_detokenizer.detokenize_last_token.remote(seq_id, last_token_id).future())
+
+    def get_output_text(self, seq_id: int) -> str:
+        return self.state[seq_id].get_output_text()
+
+    def free_request(self, request_id: str) -> None:
+        self.delegate_detokenizer.free_request.remote(request_id)
+
+    def stop_string_matched(self, seq_id: int) -> bool:
+        return self.state[seq_id].get_stop_string_matched()

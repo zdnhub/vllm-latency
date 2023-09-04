@@ -97,7 +97,7 @@ class Scheduler:
                         if seq.is_finished():
                             continue
                         self.free_seq(seq, SequenceStatus.FINISHED_ABORTED)
-                    return
+                    return 
 
     def has_unfinished_seqs(self) -> bool:
         return self.waiting or self.running or self.swapped
@@ -300,6 +300,7 @@ class Scheduler:
                 # Append a new token to the sequence.
                 output = seq_outputs[seq.seq_id]
                 seq.append_token_id(output.output_token, output.logprobs)
+                
         return scheduled
 
     def free_seq(self, seq: Sequence, finish_status: SequenceStatus) -> None:
@@ -330,6 +331,7 @@ class Scheduler:
                     blocks_to_copy[src_block].append(dst_block)
                 else:
                     blocks_to_copy[src_block] = [dst_block]
+
 
     def _preempt(
         self,

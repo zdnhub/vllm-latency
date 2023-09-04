@@ -12,8 +12,10 @@ from vllm.logger import init_logger
 from vllm.outputs import RequestOutput
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import Sequence, SequenceGroup, SequenceStatus
-from vllm.transformers_utils.tokenizer import (detokenize_incrementally,
-                                               get_tokenizer)
+from vllm.transformers_utils.tokenizer import (get_tokenizer,
+                                               Detokenizer,
+                                               DummyDetokenizer,
+                                               RayDetokenizer)
 from vllm.utils import Counter
 
 if ray:
@@ -92,6 +94,14 @@ class LLMEngine:
             model_config.tokenizer,
             tokenizer_mode=model_config.tokenizer_mode,
             trust_remote_code=model_config.trust_remote_code)
+
+        self.detokenizer = RayDetokenizer(
+            tokenizer_creator=lambda: get_tokenizer(
+                model_config.tokenizer,
+                tokenizer_mode=model_config.tokenizer_mode,
+                trust_remote_code=model_config.trust_remote_code))
+        #self.detokenizer = DummyDetokenizer(tokenizer=self.tokenizer)
+        #self.detokenizer = Detokenizer(tokenizer=self.tokenizer)
         self.seq_counter = Counter()
 
         # Create the parallel GPU workers.
@@ -112,6 +122,9 @@ class LLMEngine:
         self.num_prompt_tokens: List[Tuple[float, int]] = []
         # List of (timestamp, num_tokens)
         self.num_generation_tokens: List[Tuple[float, int]] = []
+        self.total_step_time = 0.0
+        self.total_model_execute_time = 0.0
+        self.first_step_time = None
 
     def _init_workers(self, distributed_init_method: str):
         # Lazy import the Worker to avoid importing torch.cuda/xformers
@@ -223,6 +236,11 @@ class LLMEngine:
                      log_stats=not engine_args.disable_log_stats)
         return engine
 
+    def start_record(self) -> None:
+        self.total_step_time = 0.0
+        self.total_model_execute_time = 0.0
+        self.first_step_time = None
+
     def add_request(
         self,
         request_id: str,
@@ -260,6 +278,7 @@ class LLMEngine:
             seq_id = next(self.seq_counter)
             seq = Sequence(seq_id, prompt, prompt_token_ids, block_size)
             seqs.append(seq)
+            self.detokenizer.add_sequence(request_id, seq_id, sampling_params.stop)
 
         # Create the sequence group.
         seq_group = SequenceGroup(request_id, seqs, sampling_params,
@@ -275,6 +294,7 @@ class LLMEngine:
             request_id: The ID of the request to abort.
         """
         self.scheduler.abort_seq_group(request_id)
+        self.detokenizer.free_request(request_id)
 
     def get_model_config(self) -> ModelConfig:
         """Gets the model configuration."""
@@ -289,6 +309,9 @@ class LLMEngine:
         return self.scheduler.has_unfinished_seqs()
 
     def step(self) -> List[RequestOutput]:
+        if self.first_step_time is None:
+            self.first_step_time = time.monotonic()
+        step_start = time.monotonic()
         """Performs one decoding iteration and returns newly generated results.
 
         This function performs one decoding iteration of the engine. It first
@@ -310,6 +333,7 @@ class LLMEngine:
             ]
 
         # Execute the model.
+        model_execute_start = time.monotonic()
         output = self._run_workers(
             "execute_model",
             seq_group_metadata_list=seq_group_metadata_list,
@@ -317,6 +341,7 @@ class LLMEngine:
             blocks_to_swap_out=scheduler_outputs.blocks_to_swap_out,
             blocks_to_copy=scheduler_outputs.blocks_to_copy,
         )
+        self.total_model_execute_time += time.monotonic() - model_execute_start
         # Update the scheduler with the model outputs.
         seq_groups = self.scheduler.update(output)
 
@@ -330,9 +355,10 @@ class LLMEngine:
         # Create the outputs.
         request_outputs: List[RequestOutput] = []
         for seq_group in seq_groups + scheduler_outputs.ignored_seq_groups:
-            request_output = RequestOutput.from_seq_group(seq_group)
+            request_output = RequestOutput.from_seq_group(seq_group, self.detokenizer)
             request_outputs.append(request_output)
 
+        self.total_step_time += time.monotonic() - step_start
         if self.log_stats:
             # Log the system stats.
             self._log_system_stats(scheduler_outputs.prompt_run,
@@ -399,22 +425,17 @@ class LLMEngine:
                     f"Swapped: {len(self.scheduler.swapped)} reqs, "
                     f"Pending: {len(self.scheduler.waiting)} reqs, "
                     f"GPU KV cache usage: {gpu_cache_usage * 100:.1f}%, "
-                    f"CPU KV cache usage: {cpu_cache_usage * 100:.1f}%")
+                    f"CPU KV cache usage: {cpu_cache_usage * 100:.1f}%, "
+                    f"total time: {time.monotonic() - self.first_step_time:.1f}, "
+                    f"step time: {self.total_step_time:.1f}, "
+                    f"execute time: {self.total_model_execute_time:.1f}")
         self.last_logging_time = now
 
     def _decode_sequences(self, seq_groups: List[SequenceGroup]) -> None:
         """Decodes the sequence outputs."""
         for seq_group in seq_groups:
             for seq in seq_group.get_seqs(status=SequenceStatus.RUNNING):
-                new_token, new_output_text = detokenize_incrementally(
-                    self.tokenizer,
-                    seq.output_tokens,
-                    seq.get_last_token_id(),
-                    skip_special_tokens=True,
-                )
-                if new_token is not None:
-                    seq.output_tokens.append(new_token)
-                    seq.output_text = new_output_text
+                self.detokenizer.detokenize_last_token(seq.seq_id, seq.get_last_token_id())
 
     def _stop_sequences(self, seq_groups: List[SequenceGroup]) -> None:
         """Stop the finished sequences."""
@@ -422,19 +443,10 @@ class LLMEngine:
             sampling_params = seq_group.sampling_params
             for seq in seq_group.get_seqs(status=SequenceStatus.RUNNING):
                 # Check if the sequence has generated a stop string.
-                stopped = False
-                for stop_str in sampling_params.stop:
-                    if seq.output_text.endswith(stop_str):
-                        # Truncate the output text so that the stop string is
-                        # not included in the output.
-                        seq.output_text = seq.output_text[:-len(stop_str)]
-                        self.scheduler.free_seq(
-                            seq, SequenceStatus.FINISHED_STOPPED)
-                        stopped = True
-                        break
-                if stopped:
+                if self.detokenizer.stop_string_matched(seq.seq_id):
+                    self.scheduler.free_seq(
+                        seq, SequenceStatus.FINISHED_STOPPED)
                     continue
-
                 # Check if the sequence has reached max_model_len.
                 if seq.get_len() > self.scheduler_config.max_model_len:
                     self.scheduler.free_seq(
