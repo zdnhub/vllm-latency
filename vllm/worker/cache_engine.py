@@ -34,7 +34,8 @@ class CacheEngine:
         self.head_size = model_config.get_head_size()
         self.num_layers = model_config.get_num_layers(parallel_config)
         self.num_heads = model_config.get_num_heads(parallel_config)
-        self.dtype = model_config.dtype
+        ## for kv cache quantization
+        self.dtype = model_config.kv_cache_dtype
 
         self.block_size = cache_config.block_size
         self.num_gpu_blocks = cache_config.num_gpu_blocks
@@ -152,7 +153,7 @@ class CacheEngine:
         key_cache_block = block_size * num_heads * head_size
         value_cache_block = key_cache_block
         total = num_layers * (key_cache_block + value_cache_block)
-        dtype_size = _get_dtype_size(model_config.dtype)
+        dtype_size = _get_dtype_size(model_config.kv_cache_dtype)
         return dtype_size * total
 
 
