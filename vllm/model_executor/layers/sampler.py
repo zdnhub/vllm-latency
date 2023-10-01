@@ -46,9 +46,14 @@ class Sampler(nn.Module):
         logits = _get_logits(hidden_states, embedding, embedding_bias,
                              self.vocab_size)
 
-        # Apply presence and frequency penalties.
+        # Apply sampling constraints
+        _apply_allowed_token_ids(logits, input_metadata)
+
+        # Get the output tokens
         output_tokens = _get_output_tokens(input_metadata)
         assert len(output_tokens) == logits.shape[0]
+
+        # Apply presence and frequency penalties.
         presence_penalties, frequency_penalties = _get_penalties(
             input_metadata)
         assert len(presence_penalties) == logits.shape[0]
@@ -500,3 +505,19 @@ def _sample(
         category_start_idx += num_tokens
 
     return [seq_outputs_dict[i] for i in range(len(input_metadata.seq_groups))]
+
+
+def _apply_allowed_token_ids(
+    logits: torch.Tensor,
+    input_metadata: InputMetadata,
+) -> None:
+    vocab_size = logits.shape[1]
+    mask = torch.zeros(vocab_size, dtype=torch.bool)
+    for i, seq_group in enumerate(input_metadata.seq_groups):
+        _, sampling_params = seq_group
+        assert isinstance(sampling_params, SamplingParams)
+        allowed_token_ids = sampling_params.allowed_token_ids
+        if allowed_token_ids:
+            mask[:] = True
+            mask[allowed_token_ids] = False
+            logits[i, mask] = -float("inf")
