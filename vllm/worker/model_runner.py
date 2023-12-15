@@ -114,6 +114,12 @@ class ModelRunner:
         )
         return input_tokens, input_positions, input_metadata
 
+    def _get_slot(self, block_table: List[int], position: int) -> int:
+        block_number = block_table[position // self.block_size]
+        block_offset = position % self.block_size
+        slot = block_number * self.block_size + block_offset
+        return slot
+
     def _prepare_decode(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
@@ -124,6 +130,7 @@ class ModelRunner:
         slot_mapping: List[List[int]] = []
         context_lens: List[int] = []
         block_tables: List[List[int]] = []
+        len_to_gen: int = 1
 
         for seq_group_metadata in seq_group_metadata_list:
             assert not seq_group_metadata.is_prompt
@@ -143,9 +150,7 @@ class ModelRunner:
                 context_lens.append(context_len)
 
                 block_table = seq_group_metadata.block_tables[seq_id]
-                block_number = block_table[position // self.block_size]
-                block_offset = position % self.block_size
-                slot = block_number * self.block_size + block_offset
+                slot = self._get_slot(block_table, position)
                 slot_mapping.append([slot])
 
                 if self.sliding_window is not None:
@@ -155,15 +160,15 @@ class ModelRunner:
                 block_tables.append(block_table)
 
         input_tokens = _make_tensor_with_pad(input_tokens,
-                                             max_len=1,
+                                             max_len=len_to_gen,
                                              pad=0,
                                              dtype=torch.long)
         input_positions = _make_tensor_with_pad(input_positions,
-                                                max_len=1,
+                                                max_len=len_to_gen,
                                                 pad=0,
                                                 dtype=torch.long)
         slot_mapping = _make_tensor_with_pad(slot_mapping,
-                                             max_len=1,
+                                             max_len=len_to_gen,
                                              pad=_PAD_SLOT_ID,
                                              dtype=torch.long)
         max_context_len = max(context_lens)
@@ -176,13 +181,11 @@ class ModelRunner:
                                              pad=0,
                                              dtype=torch.int)
 
-        input_metadata = InputMetadata(
-            prompt_lens=[],
-            slot_mapping=slot_mapping,
-            max_context_len=max_context_len,
-            context_lens=context_lens,
-            block_tables=block_tables,
-        )
+        input_metadata = InputMetadata(prompt_lens=[],
+                                       slot_mapping=slot_mapping,
+                                       max_context_len=max_context_len,
+                                       context_lens=context_lens,
+                                       block_tables=block_tables)
         return input_tokens, input_positions, input_metadata
 
     def _prepare_sample(
@@ -223,10 +226,11 @@ class ModelRunner:
                 selected_token_start_idx += max_prompt_len
             else:
                 num_seqs = len(seq_ids)
+                selected_token_end_idx = selected_token_start_idx + num_seqs
+
                 selected_token_indices.extend(
-                    range(selected_token_start_idx,
-                          selected_token_start_idx + num_seqs))
-                selected_token_start_idx += num_seqs
+                    range(selected_token_start_idx, selected_token_end_idx))
+                selected_token_start_idx = selected_token_end_idx
 
                 categorized_sample_indices[
                     sampling_params.sampling_type].extend(

@@ -410,9 +410,11 @@ class LLMEngine:
             last_child_sample = child_samples[-1]
             parent.append_token_id(last_child_sample.output_token,
                                    last_child_sample.logprobs)
+            parent.step_gen_token_ids = [last_child_sample.output_token]
             child_seqs.append((parent, parent))
 
         for seq, _ in child_seqs:
+            self._truncate_sequence(seq, seq_group.sampling_params)
             self._decode_sequence(seq, seq_group.sampling_params)
             self._check_stop(seq, seq_group.sampling_params)
 
@@ -657,12 +659,77 @@ class LLMEngine:
                     f"CPU KV cache usage: {cpu_cache_usage * 100:.1f}%")
         self.last_logging_time = now
 
+    def _truncate_step_gen_token_ids(self, seq: Sequence,
+                                     truncate_len: int) -> None:
+        if truncate_len > 0:
+            seq.step_gen_token_ids = seq.step_gen_token_ids[:-truncate_len]
+
+    def _truncate_sequence(self, seq: Sequence,
+                           sampling_params: SamplingParams) -> None:
+
+        output_token_ids = seq.get_output_token_ids()
+        for stop_token_id in sampling_params.stop_token_ids:
+            if stop_token_id in seq.get_token_ids():
+                # seq: [p1, p2, p3, A, B, C], stop_token: B, p1, p2, p3 are prompt tokens
+                # truncate_len = 4 + 1  - 3 = 2
+                # we need to include the stop_token in the output
+                truncated_output_len = seq.get_token_ids().index(
+                    stop_token_id) + 1 - seq.get_prompt_len()
+                self._truncate_step_gen_token_ids(
+                    seq,
+                    len(output_token_ids) - truncated_output_len)
+                # we don't modify logical/physical block here
+                seq.data.output_token_ids = output_token_ids[:
+                                                             truncated_output_len]
+                seq.status = SequenceStatus.FINISHED_STOPPED
+                return
+
+        # Check if the sequence has reached max_model_len.
+        if seq.get_len() > self.scheduler_config.max_model_len:
+            truncated_output_len = self.scheduler_config.max_model_len - seq.get_prompt_len(
+            )
+            self._truncate_step_gen_token_ids(
+                seq,
+                len(output_token_ids) - truncated_output_len)
+            seq.data.output_token_ids = output_token_ids[:truncated_output_len]
+            seq.status = SequenceStatus.FINISHED_LENGTH_CAPPED
+            return
+
+        # Check if the sequence has reached max_tokens.
+        if seq.get_output_len() >= sampling_params.max_tokens:
+            truncated_output_len = sampling_params.max_tokens
+            self._truncate_step_gen_token_ids(
+                seq,
+                len(output_token_ids) - truncated_output_len)
+            seq.data.output_token_ids = output_token_ids[:truncated_output_len]
+            seq.status = SequenceStatus.FINISHED_LENGTH_CAPPED
+            return
+
+        # Check if the sequence has generated the EOS token.
+        if ((not sampling_params.ignore_eos)
+                and self.tokenizer.eos_token_id in seq.get_output_token_ids()):
+            truncated_output_len = output_token_ids.index(
+                self.tokenizer.eos_token_id) + 1
+            self._truncate_step_gen_token_ids(
+                seq,
+                len(output_token_ids) - truncated_output_len)
+            seq.data.output_token_ids = output_token_ids[:truncated_output_len]
+            seq.status = SequenceStatus.FINISHED_STOPPED
+            return
+
     def _decode_sequence(self, seq: Sequence, prms: SamplingParams) -> None:
+        if seq.tokens is None:
+            # prefill phase
+            new_token_ids = seq.get_token_ids()
+        else:
+            gen_len = len(seq.step_gen_token_ids)
+            new_token_ids = seq.get_output_token_ids()[-gen_len:]
         """Decodes the new token for a sequence."""
         (new_tokens, new_output_text, prefix_offset,
          read_offset) = detokenize_incrementally(
              self.tokenizer,
-             all_input_ids=seq.get_token_ids(),
+             prompt_len=seq.get_prompt_len(),
+             new_token_ids=new_token_ids,
              prev_tokens=seq.tokens,
              prefix_offset=seq.prefix_offset,
              read_offset=seq.read_offset,
@@ -681,31 +748,13 @@ class LLMEngine:
                     sampling_params: SamplingParams) -> None:
         """Stop the finished sequences."""
         for stop_str in sampling_params.stop:
-            if seq.output_text.endswith(stop_str):
+            if stop_str in seq.output_text:
                 # Truncate the output text so that the stop string is
                 # not included in the output.
-                seq.output_text = seq.output_text[:-len(stop_str)]
+                seq.output_text = seq.output_text[:seq.output_text.
+                                                  index(stop_str)]
                 seq.status = SequenceStatus.FINISHED_STOPPED
                 return
-        if seq.get_last_token_id() in sampling_params.stop_token_ids:
-            seq.status = SequenceStatus.FINISHED_STOPPED
-            return
-
-        # Check if the sequence has reached max_model_len.
-        if seq.get_len() > self.scheduler_config.max_model_len:
-            seq.status = SequenceStatus.FINISHED_LENGTH_CAPPED
-            return
-
-        # Check if the sequence has reached max_tokens.
-        if seq.get_output_len() == sampling_params.max_tokens:
-            seq.status = SequenceStatus.FINISHED_LENGTH_CAPPED
-            return
-
-        # Check if the sequence has generated the EOS token.
-        if ((not sampling_params.ignore_eos)
-                and seq.get_last_token_id() == self.tokenizer.eos_token_id):
-            seq.status = SequenceStatus.FINISHED_STOPPED
-            return
 
     def _run_workers_in_batch(
         self,

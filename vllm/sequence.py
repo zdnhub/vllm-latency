@@ -119,6 +119,7 @@ class Sequence:
         self.block_size = block_size
 
         self.data = SequenceData(prompt_token_ids)
+        self.step_gen_token_ids: List[int] = []
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
@@ -139,6 +140,9 @@ class Sequence:
             block_size=self.block_size,
         )
         self.logical_token_blocks.append(block)
+
+    def _delete_logical_block(self, block: LogicalTokenBlock) -> None:
+        self.logical_token_blocks.remove(block)
 
     def _append_tokens_to_blocks(self, token_ids: List[int]) -> None:
         cursor = 0
@@ -165,6 +169,18 @@ class Sequence:
         self._append_tokens_to_blocks([token_id])
         self.output_logprobs.append(logprobs)
         self.data.append_token_id(token_id, logprobs[token_id])
+
+    # delete n tokens from the end of the sequence
+    def delete_tailing_tokens(self, n: int) -> None:
+        while n > 0:
+            assert len(self.logical_token_blocks) > 0
+            last_block = self.logical_token_blocks[-1]
+            if last_block.num_tokens < n:
+                n -= last_block.num_tokens
+                self._delete_logical_block(last_block)
+            else:
+                last_block.delete_last_tokens(n)
+                break
 
     def get_len(self) -> int:
         return self.data.get_len()
@@ -358,16 +374,16 @@ class SequenceOutput:
     Args:
         parent_seq_id: The ID of the parent sequence (for forking in beam
             search).
-        output_token: The output token ID.
-        logprobs: The logprobs of the output token.
+        output_token: The output token ID(s).
+        logprobs: The logprobs of the output token(s).
             (Token id -> logP(x_i+1 | x_0, ..., x_i))
     """
 
     def __init__(
         self,
         parent_seq_id: int,
-        output_token: int,
-        logprobs: Dict[int, float],
+        output_token: Union[int, List[int]],
+        logprobs: Union[Dict[int, float], List[Dict[int, float]]],
     ) -> None:
         self.parent_seq_id = parent_seq_id
         self.output_token = output_token

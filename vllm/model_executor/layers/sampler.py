@@ -40,6 +40,22 @@ class Sampler(nn.Module):
         sampling_metadata: SamplingMetadata,
         embedding_bias: Optional[torch.Tensor] = None,
     ) -> SamplerOutput:
+        prompt_run = sampling_metadata.num_prompts > 0
+        len_to_gen = hidden_states.shape[1]
+        if len_to_gen > 1 and (not prompt_run):
+            return self._multi_token_forward(embedding, hidden_states,
+                                             sampling_metadata, embedding_bias)
+        else:
+            return self._forward(embedding, hidden_states, sampling_metadata,
+                                 embedding_bias)
+
+    def _forward(
+        self,
+        embedding: torch.Tensor,
+        hidden_states: torch.Tensor,
+        sampling_metadata: SamplingMetadata,
+        embedding_bias: Optional[torch.Tensor] = None,
+    ) -> SamplerOutput:
         # Get the hidden states that we use for sampling.
         hidden_states = _prune_hidden_states(hidden_states, sampling_metadata)
 
@@ -94,6 +110,45 @@ class Sampler(nn.Module):
         # Get the logprobs query results.
         prompt_logprobs, sample_logprobs = _get_logprobs(
             logprobs, sampling_metadata, sample_results)
+        return _build_sampler_output(sample_results, sampling_metadata,
+                                     prompt_logprobs, sample_logprobs)
+
+    def _multi_token_forward(
+        self,
+        embedding: torch.Tensor,
+        hidden_states: torch.Tensor,
+        sampling_metadata: SamplingMetadata,
+        embedding_bias: Optional[torch.Tensor] = None,
+    ) -> SamplerOutput:
+        # Sampler forward for speculative decoding.
+        # It is a simiplified version of the original forward
+        # and only supports argmax sampling
+        batch_size = hidden_states.shape[0]
+        len_to_gen = hidden_states.shape[1]
+        hidden_states = _prune_hidden_states(hidden_states, sampling_metadata)
+
+        # Get the logits for the next tokens.
+        logits = _get_logits(hidden_states, embedding, embedding_bias,
+                             self.vocab_size)
+
+        # Do not apply templerature since we only support greedy sampling
+
+        # We use float32 for probabilities and log probabilities.
+        # Compute the probabilities.
+        probs = torch.softmax(logits, dim=-1, dtype=torch.float)
+        # Compute the log probabilities.
+        # Use log_softmax to ensure numerical stability.
+        logprobs = torch.log_softmax(logits, dim=-1, dtype=torch.float)
+
+        # sample_results = torch.argmax(logprobs, dim=-1).cpu().reshape(batch_size, -1)
+        sample_results = _greedy_sample(sampling_metadata.seq_groups, logprobs,
+                                        len_to_gen)
+        prompt_logprobs, sample_logprobs = _get_logprobs(
+            logprobs, sampling_metadata, sample_results)
+
+        probdis = probs.reshape(batch_size, len_to_gen, -1)
+        # change probs to a list of lists
+        probdis = [list(tensor.unbind(0)) for tensor in probdis.unbind(0)]
         return _build_sampler_output(sample_results, sampling_metadata,
                                      prompt_logprobs, sample_logprobs)
 
@@ -362,11 +417,12 @@ def _apply_min_p(
     return logits
 
 
-def _greedy_sample(
-    selected_seq_groups: List[Tuple[List[int], SamplingParams]],
-    logprobs: torch.Tensor,
-) -> List[Tuple[List[int], List[int]]]:
+def _greedy_sample(selected_seq_groups: List[Tuple[List[int], SamplingParams]],
+                   logprobs: torch.Tensor,
+                   len_to_gen: int = 1) -> List[Tuple[List[int], List[int]]]:
     samples = torch.argmax(logprobs, dim=-1).cpu()
+    if len_to_gen > 1:
+        samples = samples.reshape(-1, len_to_gen)
     sample_idx = 0
     results = []
     for seq_group in selected_seq_groups:
@@ -375,10 +431,13 @@ def _greedy_sample(
         assert num_parent_seqs == 1, (
             "Greedy sampling should have only one seq.")
         parent_ids = list(range(num_parent_seqs))
-        next_token_ids = [samples[sample_idx].item()]
+        if len_to_gen > 1:
+            next_token_ids = samples[sample_idx].tolist()
+        else:
+            next_token_ids = [samples[sample_idx].item()]
         results.append((next_token_ids, parent_ids))
         sample_idx += num_parent_seqs
-    assert sample_idx == logprobs.size(0)
+    # assert sample_idx == logprobs.size(0)
     return results
 
 
@@ -545,13 +604,14 @@ def _get_logprobs(
                 token_id for token_id in prompt_tokens[1:])
             sample_idx += prompt_len - 1
         batched_logprobs_query_seq_indices.extend(
-            [sample_idx + parent_id for parent_id in parent_ids])
+            [sample_idx + parent_id
+             for parent_id in parent_ids] * len(next_token_ids))
         batched_logprobs_query_token_indices.extend(next_token_ids)
         if sampling_params.logprobs is not None:
             largest_num_logprobs = max(largest_num_logprobs,
                                        sampling_params.logprobs)
         sample_idx += num_parent_seqs
-    assert sample_idx == logprobs.size(0)
+    # assert sample_idx == logprobs.size(0)
 
     # Batched query for logprobs of selected token
     batched_logprobs_query_result = logprobs[[
@@ -629,11 +689,10 @@ def _get_logprobs(
 
 
 def _build_sampler_output(
-    sample_results: List[Tuple[List[int], List[int]]],
-    sampling_metadata: SamplingMetadata,
-    prompt_logprobs: List[Optional[PromptLogprobs]],
-    sample_logprobs: List[SampleLogprobs],
-) -> SamplerOutput:
+        sample_results: List[Tuple[List[int], List[int]]],
+        sampling_metadata: SamplingMetadata,
+        prompt_logprobs: List[Optional[PromptLogprobs]],
+        sample_logprobs: List[SampleLogprobs]) -> SamplerOutput:
     sampler_output = []
     for (seq_group, sample_result, group_prompt_logprobs,
          group_sample_logprobs) in zip(sampling_metadata.seq_groups,
@@ -642,6 +701,7 @@ def _build_sampler_output(
         seq_ids, _ = seq_group
         next_token_ids, parent_ids = sample_result
         seq_outputs = []
+
         for parent_id, next_token_id, logprobs in zip(parent_ids,
                                                       next_token_ids,
                                                       group_sample_logprobs):
