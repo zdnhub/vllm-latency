@@ -1,4 +1,6 @@
 """Sampling parameters for text generation."""
+import re
+
 from enum import IntEnum
 from functools import cached_property
 from typing import Callable, List, Optional, Union
@@ -129,6 +131,17 @@ class SamplingParams:
             self.stop = [stop]
         else:
             self.stop = list(stop)
+
+        reverse_stop_regex_string =
+          # multi-line matching
+          "(?m)" +
+          # assert as start of the string
+          "\A" +
+          # Translate ["a", "b", "cde"] into "(a)|(b)|(edc)"
+          "(" + ")|(".join([re.escape(x[::-1]) for x in self.stop]) + ")"
+
+        self.reverse_stop_regex = re.compile(reverse_stop_regex_string)
+
         if stop_token_ids is None:
             self.stop_token_ids = []
         else:
