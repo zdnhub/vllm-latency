@@ -60,7 +60,10 @@ class HfRunner:
         ).cuda()
         if tokenizer_name is None:
             tokenizer_name = model_name
-        self.tokenizer = get_tokenizer(tokenizer_name, trust_remote_code=True)
+        self.tokenizer = get_tokenizer(
+            tokenizer_name,
+            trust_remote_code=True,
+        )
 
     def generate(
         self,
@@ -177,9 +180,11 @@ class VllmRunner:
         self,
         prompts: List[str],
         sampling_params: SamplingParams,
+        prompt_embeds: List[torch.Tensor] = None,
     ) -> List[Tuple[List[int], str]]:
         req_outputs = self.model.generate(prompts,
-                                          sampling_params=sampling_params)
+                                          sampling_params=sampling_params,
+                                          prompt_embeds=prompt_embeds)
         outputs = []
         for req_output in req_outputs:
             prompt_str = req_output.prompt
@@ -198,9 +203,12 @@ class VllmRunner:
         self,
         prompts: List[str],
         max_tokens: int,
+        prompt_embeds: List[torch.Tensor] = None,
     ) -> List[Tuple[List[int], str]]:
         greedy_params = SamplingParams(temperature=0.0, max_tokens=max_tokens)
-        outputs = self.generate(prompts, greedy_params)
+        outputs = self.generate(prompts,
+                                greedy_params,
+                                prompt_embeds=prompt_embeds)
         return [(output_ids[0], output_str[0])
                 for output_ids, output_str in outputs]
 
@@ -209,12 +217,15 @@ class VllmRunner:
         prompts: List[str],
         beam_width: int,
         max_tokens: int,
+        prompt_embeds: List[torch.Tensor] = None,
     ) -> List[Tuple[List[int], str]]:
         beam_search_params = SamplingParams(n=beam_width,
                                             use_beam_search=True,
                                             temperature=0.0,
                                             max_tokens=max_tokens)
-        outputs = self.generate(prompts, beam_search_params)
+        outputs = self.generate(prompts,
+                                beam_search_params,
+                                prompt_embeds=prompt_embeds)
         return outputs
 
 
