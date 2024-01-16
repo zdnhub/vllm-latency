@@ -89,3 +89,95 @@ torch::Tensor gptq_gemm(
 void gptq_shuffle(
   torch::Tensor q_weight,
   torch::Tensor q_perm);
+
+// These are kernels used by smoothquant
+void rms_norm_quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& weight,
+  float epsilon);
+
+void dequant_add_residual_rms_norm_quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& residual,
+  torch::Tensor& gamma,
+  float scale,
+  float epsilon);
+
+void dequant_add_residual_rms_norm_quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& residual,
+  torch::Tensor& gamma,
+  torch::Tensor& scale,
+  float epsilon,
+  float weight_dequant_scale);
+
+void add_residual_rms_norm_quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& residual,
+  torch::Tensor& weight,
+  float epsilon);
+
+void dequant_rotary_embedding(
+  torch::Tensor& positions,
+  torch::Tensor& query,
+  torch::Tensor& key,
+  int head_size,
+  torch::Tensor& cos_sin_cache,
+  bool is_neox,
+  torch::Tensor& query_out,
+  torch::Tensor& key_out,
+  float query_scale,
+  float key_scale);
+
+void dequant_silu_and_mul_quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  float gate_scale,
+  float up_scale,
+  float out_scale);
+
+void dequant_silu_and_mul_quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  float gate_scale,
+  float up_scale,
+  torch::Tensor& out_scale,
+  torch::Tensor& tmp);
+
+void dequant_add_residual(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& residual,
+  float scale);
+
+void dequant_add_residual(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& residual,
+  torch::Tensor& scale,
+  float weight_dequant_scale);
+
+void dequant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  float scale);
+
+void dequant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& scale,
+  float weight_dequant_scale);
+
+void quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  float scale);
+
+void quant(
+  torch::Tensor& out,
+  torch::Tensor& input,
+  torch::Tensor& scale);

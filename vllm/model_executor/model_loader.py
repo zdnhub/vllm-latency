@@ -32,11 +32,18 @@ def _get_model_architecture(config: PretrainedConfig) -> Type[nn.Module]:
         f"Supported architectures: {ModelRegistry.get_supported_archs()}")
 
 
+def _is_support_smoothquant(config: PretrainedConfig) -> bool:
+    architectures = getattr(config, "architectures", [])
+    supported_archs = ModelRegistry.get_supported_smoothquant_archs()
+    return any(arch in supported_archs for arch in architectures)
+
+
 def get_model(model_config: ModelConfig) -> nn.Module:
     model_class = _get_model_architecture(model_config.hf_config)
 
     # Get the (maybe quantized) linear method.
     linear_method = None
+    quant_config = None
     if model_config.quantization is not None:
         quant_config = get_quant_config(model_config.quantization,
                                         model_config.model,
@@ -62,7 +69,11 @@ def get_model(model_config: ModelConfig) -> nn.Module:
         # Create a model instance.
         # The weights will be initialized as empty tensors.
         with torch.device("cuda"):
-            model = model_class(model_config.hf_config, linear_method)
+            if _is_support_smoothquant(model_config.hf_config):
+                model = model_class(model_config.hf_config, linear_method,
+                                    quant_config)
+            else:
+                model = model_class(model_config.hf_config, linear_method)
         if model_config.load_format == "dummy":
             # NOTE(woosuk): For accurate performance evaluation, we assign
             # random values to the weights.

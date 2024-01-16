@@ -51,6 +51,13 @@ _ROCM_PARTIALLY_SUPPORTED_MODELS = {
     "Sliding window attention is not yet supported in ROCm's flash attention",
 }
 
+# Models supported by smoothquant
+_SUPPORTED_SMOOTHQUANT_MODELS = {
+    "LlamaForCausalLM": ("llama", "LlamaForCausalLM"),
+    # For decapoda-research/llama-*
+    "LLaMAForCausalLM": ("llama", "LlamaForCausalLM"),
+}
+
 
 class ModelRegistry:
 
@@ -76,6 +83,10 @@ class ModelRegistry:
     @staticmethod
     def get_supported_archs() -> List[str]:
         return list(_MODELS.keys())
+
+    @staticmethod
+    def get_supported_smoothquant_archs() -> List[str]:
+        return list(_SUPPORTED_SMOOTHQUANT_MODELS.keys())
 
 
 __all__ = [
