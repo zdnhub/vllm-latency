@@ -59,7 +59,7 @@ class Sampler(nn.Module):
         logits = _apply_logits_processors(logits, sampling_metadata)
 
         # Prepare sampling tensors with pinned memory to avoid blocking.
-        (sampling_tensors, do_penalties, do_top_p_top_k,
+        (sampling_tensors, do_penalties, do_top_p_top_k, do_tail_free_sampling,
          do_min_p) = SamplingTensors.from_sampling_metadata(
              sampling_metadata, vocab_size, logits.device, logits.dtype)
 
@@ -78,6 +78,9 @@ class Sampler(nn.Module):
         if do_top_p_top_k:
             logits = _apply_top_k_top_p(logits, sampling_tensors.top_ps,
                                         sampling_tensors.top_ks)
+
+        if do_tail_free_sampling:
+            logits = _apply_tail_free(logits, sampling_tensors.tails_free)
 
         if do_min_p:
             logits = _apply_min_p(logits, sampling_tensors.min_ps)
@@ -215,6 +218,51 @@ def _apply_top_k_top_p(
                                                            src=src)
     logits = torch.gather(logits_sort, dim=-1, index=logits_idx_inv)
     return logits
+
+
+def _apply_tail_free(logits: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+    # Sort the logits in descending order.
+    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+
+    # Calculate the second derivative of the logits.
+    d2 = sorted_logits.diff().diff().abs()
+
+    # Normalize the second derivative.
+    normalized_d2 = d2 / d2.sum(dim=-1, keepdim=True)
+
+    # Calculate the cumulative sum of the normalized second derivative.
+    normalized_d2_cdf = normalized_d2.cumsum(
+        dim=-1)  # Fixed: Added a dummy dimension of size 1 to z
+
+    # Remove tokens with a cumulative normalized absolute second finite difference larger than the TFS value.
+    sorted_indices_to_remove = normalized_d2_cdf > z.unsqueeze(
+        -1)  # Fixed: Unsqueezed z to match the shape of normalized_d2_cdf
+
+    # Centre the distribution around the cutoff as in the original implementation of the algorithm.
+    sorted_indices_to_remove = torch.cat(
+        (
+            torch.zeros(sorted_logits.shape[0],
+                        1,
+                        dtype=torch.bool,
+                        device=sorted_logits.device),
+            sorted_indices_to_remove,
+            torch.ones(sorted_logits.shape[0],
+                       1,
+                       dtype=torch.bool,
+                       device=sorted_logits.device),
+        ),
+        dim=-1,
+    )
+
+    # Mask the filtered logits.
+    filtered_logits = sorted_logits.masked_fill(sorted_indices_to_remove,
+                                                float("-inf"))
+
+    # Unsort the filtered logits.
+    _, unsorted_indices = torch.sort(sorted_indices)
+    unsorted_filtered_logits = filtered_logits.gather(1, unsorted_indices)
+
+    return unsorted_filtered_logits
 
 
 def _apply_min_p(
