@@ -27,6 +27,7 @@ class EngineArgs:
     block_size: int = 16
     swap_space: int = 4  # GiB
     gpu_memory_utilization: float = 0.90
+    prefix_pool_memory_utilization: float = 0.0
     max_num_batched_tokens: Optional[int] = None
     max_num_seqs: int = 256
     max_paddings: int = 256
@@ -179,6 +180,15 @@ class EngineArgs:
             help='the fraction of GPU memory to be used for '
             'the model executor, which can range from 0 to 1.'
             'If unspecified, will use the default value of 0.9.')
+        parser.add_argument(
+            '--prefix-pool-memory-utilization',
+            type=float,
+            default=EngineArgs.prefix_pool_memory_utilization,
+            help=
+            'the fraction of GPU memory to be used by prefixes allocated and '
+            'present in the prefix pool. If 0, no prefix cache is used. It cannot be '
+            'larger than gpu_memory_utilization. If unspecified, will use the default of 0.'
+        )
         parser.add_argument('--max-num-batched-tokens',
                             type=int,
                             default=EngineArgs.max_num_batched_tokens,
@@ -279,7 +289,8 @@ class EngineArgs:
         cache_config = CacheConfig(self.block_size,
                                    self.gpu_memory_utilization,
                                    self.swap_space, self.kv_cache_dtype,
-                                   model_config.get_sliding_window())
+                                   model_config.get_sliding_window(),
+                                   self.prefix_pool_memory_utilization)
         parallel_config = ParallelConfig(self.pipeline_parallel_size,
                                          self.tensor_parallel_size,
                                          self.worker_use_ray,
