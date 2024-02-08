@@ -4,9 +4,10 @@ import socket
 import subprocess
 import uuid
 from platform import uname
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 from packaging.version import parse, Version
 
+import GPUtil
 import psutil
 import torch
 import asyncio
@@ -35,6 +36,12 @@ STR_DTYPE_TO_TORCH_DTYPE = {
 class Device(enum.Enum):
     GPU = enum.auto()
     CPU = enum.auto()
+
+
+class WorkerType(enum.Enum):
+    PROMPT = enum.auto()
+    TOKEN = enum.auto()
+    MIXED = enum.auto()
 
 
 class Counter:
@@ -112,6 +119,38 @@ class LRUCache:
         while len(self.cache) > 0:
             self.remove_oldest()
         self.cache.clear()
+
+# Maximum number of sequences that can be in the system at a time
+# Only used when sep_prompt_token is set in Parallel Config
+# It determines the number of semaphores that will be used for KV cache transfer using MSCCL++
+# This can be changed based on need
+MAX_SLOT_IDS = 10
+
+
+class SeqToSlotMapper:
+    """ SeqToSlotMapper maps sequence ids to a limited set of slot ids.
+    A slot is freed every time a sequence finishes. It is used to manage
+    the semaphores for MSCCL++ proxy channels - there are as many semaphores
+    as the number of slots. Each sequence is mapped to a different semaphore/slot,
+    in order to allow fine-grained synchronization
+    """
+    def __init__(self):
+        self.available_slotids = list(range(MAX_SLOT_IDS))
+        self.seq_to_slot = {}
+
+    def set_seq(self, seq_id):
+        try:
+            slot_id = self.available_slotids.pop(0)
+        except IndexError:
+            raise RuntimeError("No more slots available. Increase MAX_SLOT_IDS.")
+        self.seq_to_slot[seq_id] = slot_id
+
+    def free_seq(self, seq_id):
+        slot_id = self.seq_to_slot.pop(seq_id)
+        self.available_slotids.insert(0, slot_id)
+
+    def get_slot_id(self, seq_id):
+        return self.seq_to_slot[seq_id]
 
 
 def is_hip() -> bool:
@@ -282,3 +321,33 @@ def create_kv_caches_with_random(
                 f"Does not support value cache of type {cache_dtype}")
         value_caches.append(value_cache)
     return key_caches, value_caches
+
+
+def get_total_num_gpus() -> int:
+    return len(GPUtil.getGPUs())
+
+
+def coalesce_blocks(block_list: List[int]):
+    '''Coalesce of list of blocks to exploit contiguous chunks.
+    '''
+    if not block_list:
+        return []
+    sorted_block_list = sorted(block_list)
+    ret = []
+    current_block_start = sorted_block_list[0]
+    current_block_length = 1
+    for i in range(1, len(sorted_block_list)):
+        if sorted_block_list[i] == sorted_block_list[i - 1] + 1:
+            current_block_length += 1
+        else:
+            ret.append((current_block_start, current_block_length))
+            current_block_start = sorted_block_list[i]
+            current_block_length = 1
+    ret.append((current_block_start, current_block_length))
+    return ret
+
+
+def coalesce_blocks_by_id(blocks_to_nw_dict: Dict[int, List[int]]):
+    for cur_id in blocks_to_nw_dict:
+        blocks_to_nw_dict[cur_id] = coalesce_blocks(blocks_to_nw_dict[cur_id])
+    return blocks_to_nw_dict

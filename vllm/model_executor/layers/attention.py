@@ -58,6 +58,11 @@ class PagedAttention(nn.Module):
             raise ValueError(f"head_size ({self.head_size}) is not supported. "
                              f"Supported head sizes: {_SUPPORTED_HEAD_SIZES}.")
 
+        self.kvcache_comm = None
+
+    def set_kvcache_comm(self, kvcache_comm):
+        self.kvcache_comm = kvcache_comm
+
     def forward(
         self,
         query: torch.Tensor,
@@ -100,6 +105,12 @@ class PagedAttention(nn.Module):
                 input_metadata.slot_mapping.flatten(),
                 input_metadata.kv_cache_dtype,
             )
+
+            if input_metadata.is_prompt and len(input_metadata.blocks_to_nw):
+                assert self.kvcache_comm is not None
+                for semid in input_metadata.blocks_to_nw:
+                    for block_start, num_blocks in input_metadata.blocks_to_nw[semid]:
+                        self.kvcache_comm.put(semid, self.layer_id, block_start, num_blocks)
 
         if input_metadata.is_prompt:
             # Prompt run.

@@ -90,6 +90,13 @@ Documentation
    quantization/auto_awq
 
 .. toctree::
+   :maxdepth: 1
+   :caption: Splitwise
+
+   splitwise/getting_started
+   splitwise/installing_mscclpp
+
+.. toctree::
    :maxdepth: 2
    :caption: Developer Documentation
 
