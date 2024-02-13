@@ -6,6 +6,7 @@ import os
 import importlib
 import inspect
 
+from multiprocessing import cpu_count
 from aioprometheus import MetricsMiddleware
 from aioprometheus.asgi.starlette import metrics
 import fastapi
@@ -25,6 +26,7 @@ from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds
+MAX_GUNICORN_WORKERS_PROCESSES = 17
 
 openai_serving_chat: OpenAIServingChat = None
 openai_serving_completion: OpenAIServingCompletion = None
@@ -100,6 +102,13 @@ def parse_args():
                         type=str,
                         default=None,
                         help="The file path to the SSL cert file")
+    parser.add_argument("--env_type",
+                        type = str,
+                        default="dev",
+                        action="store",
+                        choices=["dev", "prod"],
+                        help="Runs a uvicorn single process for dev vs gunicorn multi process for prod"
+    )
     parser.add_argument(
         "--root-path",
         type=str,
@@ -224,10 +233,43 @@ if __name__ == "__main__":
     add_global_metrics_labels(model_name=engine_args.model)
 
     app.root_path = args.root_path
-    uvicorn.run(app,
-                host=args.host,
-                port=args.port,
-                log_level="info",
-                timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
-                ssl_keyfile=args.ssl_keyfile,
-                ssl_certfile=args.ssl_certfile)
+    if args.env_type == "dev":
+        uvicorn.run(app,
+                    host=args.host,
+                    port=args.port,
+                    log_level="info",
+                    timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
+                    ssl_keyfile=args.ssl_keyfile,
+                    ssl_certfile=args.ssl_certfile)
+    else:
+        import gunicorn.app.base as base_app
+        # from here : https://docs.gunicorn.org/en/stable/custom.html
+        class vLLMApiApplication(base_app):
+            def __init__(self, app, options=None):
+                self.options = options or {}
+                self.application = app
+                super().__init__()
+
+            def load_config(self):
+                config = {key: value for key, value in self.options.items()
+                        if key in self.cfg.settings and value is not None}
+                for key, value in config.items():
+                    self.cfg.set(key.lower(), value)
+
+            def load(self):
+                return self.application
+        
+        # Now some of the best config params from here : https://docs.gunicorn.org/en/stable/design.html#how-many-workers
+        options = {
+            "bind" : f"{args.host}:{args.port}",
+            "loglevel" : "info",
+            "workers" : min(MAX_GUNICORN_WORKERS_PROCESSES, 2 * cpu_count() + 1),
+            "worker_class" : "gevent",
+            "graceful_timeout" : TIMEOUT_KEEP_ALIVE,
+            "keyfile" : args.keyfile,
+            "certfile" : args.certfile
+        }
+
+        vLLMApiApplication(app=app, options=options).run()
+
+
