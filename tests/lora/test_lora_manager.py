@@ -101,7 +101,7 @@ def create_packed_lora(
 def test_replace_submodules(dist_init, dummy_model):
     model = dummy_model
     model.supported_lora_modules = ["dense1", "layer1.dense2"]
-    model.packed_modules_mapping = {}
+    model.packed_modules = {}
     manager = LoRAModelManager(
         model, 1, 1, 1,
         LoRAConfig(max_lora_rank=8, max_cpu_loras=8, max_loras=8))
@@ -119,7 +119,7 @@ def test_replace_submodules(dist_init, dummy_model):
 def test_lora_model_manager(dist_init, dummy_model):
     model = dummy_model
     model.supported_lora_modules = ["dense1", "dense2", "lm_head"]
-    model.packed_modules_mapping = {}
+    model.packed_modules = {}
     model_lora1 = create_lora(1, model, ["layer1.dense1", "dense2", "lm_head"])
     model_lora2 = create_lora(2, model, ["dense1", "dense2", "lm_head"])
     model_lora3 = create_lora(3, model, ["dense1", "dense2", "lm_head"])
@@ -165,7 +165,7 @@ def test_lora_model_manager(dist_init, dummy_model):
 def test_lora_lru_cache_model_manager(dist_init, dummy_model):
     model = dummy_model
     model.supported_lora_modules = ["dense1", "dense2", "lm_head"]
-    model.packed_modules_mapping = {}
+    model.packed_modules = {}
     model_lora1 = create_lora(1, model, ["layer1.dense1", "dense2", "lm_head"])
     model_lora2 = create_lora(2, model, ["dense1", "dense2", "lm_head"])
     model_lora3 = create_lora(3, model, ["dense1", "dense2", "lm_head"])
@@ -216,7 +216,7 @@ def test_lru_lora_model_manager(dist_init, dummy_model):
     # tested in test_lora_model_manager
     model = dummy_model
     model.supported_lora_modules = ["dense1", "dense2", "lm_head"]
-    model.packed_modules_mapping = {}
+    model.packed_modules = {}
     model_lora1 = create_lora(1, model, ["layer1.dense1", "dense2", "lm_head"])
     model_lora2 = create_lora(2, model, ["dense1", "dense2", "lm_head"])
     model_lora3 = create_lora(3, model, ["dense1", "dense2", "lm_head"])
@@ -435,7 +435,7 @@ def test_worker_lora_manager(llama_2_7b_model_extra_embeddings,
 def test_packed_loras(dist_init, dummy_model_gate_up):
     model = dummy_model_gate_up
     model.supported_lora_modules = ["gate_up_proj"]
-    model.packed_modules_mapping = {
+    model.packed_modules = {
         "gate_up_proj": [
             "gate_proj",
             "up_proj",

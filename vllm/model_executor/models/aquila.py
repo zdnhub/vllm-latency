@@ -40,7 +40,9 @@ from vllm.model_executor.layers.vocab_parallel_embedding import (
 from vllm.model_executor.parallel_utils.parallel_state import (
     get_tensor_model_parallel_world_size)
 from vllm.model_executor.sampling_metadata import SamplingMetadata
-from vllm.model_executor.weight_utils import (default_weight_loader,
+from vllm.model_executor.weight_utils import (PACKED_MODULES,
+                                              default_weight_loader,
+                                              get_packed_param,
                                               hf_model_weights_iterator)
 from vllm.sequence import SamplerOutput
 from vllm.transformers_utils.configs.aquila import AquilaConfig
@@ -271,6 +273,8 @@ class AquilaModel(nn.Module):
 
 class AquilaForCausalLM(nn.Module):
 
+    packed_modules = PACKED_MODULES
+
     def __init__(
         self,
         config,
@@ -308,20 +312,21 @@ class AquilaForCausalLM(nn.Module):
                      cache_dir: Optional[str] = None,
                      load_format: str = "auto",
                      revision: Optional[str] = None):
-        stacked_params_mapping = [
-            # (param_name, shard_name, shard_id)
-            ("qkv_proj", "q_proj", "q"),
-            ("qkv_proj", "k_proj", "k"),
-            ("qkv_proj", "v_proj", "v"),
-            ("gate_up_proj", "gate_proj", 0),
-            ("gate_up_proj", "up_proj", 1),
+        weight_shards = [
+            # (shard_name, shard_id)
+            ("q_proj", "q"),
+            ("k_proj", "k"),
+            ("v_proj", "v"),
+            ("gate_proj", 0),
+            ("up_proj", 1),
         ]
         params_dict = dict(self.named_parameters())
         for name, loaded_weight in hf_model_weights_iterator(
                 model_name_or_path, cache_dir, load_format, revision):
             if "rotary_emb.inv_freq" in name:
                 continue
-            for (param_name, weight_name, shard_id) in stacked_params_mapping:
+            for (weight_name, shard_id) in weight_shards:
+                param_name = get_packed_param(self.packed_modules, weight_name)
                 if weight_name not in name:
                     continue
                 name = name.replace(weight_name, param_name)

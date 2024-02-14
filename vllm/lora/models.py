@@ -290,8 +290,7 @@ class LoRAModelManager:
         if hasattr(self.model, "supported_lora_modules"):
             self.supported_lora_modules = copy.deepcopy(
                 self.model.supported_lora_modules)
-            self.packed_modules_mapping = copy.deepcopy(
-                self.model.packed_modules_mapping)
+            self.packed_modules = copy.deepcopy(self.model.packed_modules)
         self.packed_modules: Dict[str, List[str]] = {}
         self.modules: Dict[str, "BaseLayerWithLoRA"] = {}
         self._registered_loras: Dict[int, LoRAModel] = {}
@@ -480,7 +479,7 @@ class LoRAModelManager:
                 lora.optimize()
             else:
                 parts = module_name.split(".")
-                replacements = self.packed_modules_mapping[parts[-1]]
+                replacements = self.packed_modules[parts[-1]]
                 subloras = []
                 for i, r in enumerate(replacements):
                     lora = LoRALayerWeights.create_dummy_lora_weights(
@@ -507,7 +506,7 @@ class LoRAModelManager:
     def _register_packed_modules(self, module_full_name: str) -> None:
         parts = module_full_name.split(".")
         module_name = parts[-1]
-        replacements = self.packed_modules_mapping.get(module_name)
+        replacements = self.packed_modules.get(module_name)
         if not replacements:
             return
         prefix = ".".join(parts[:-1])
