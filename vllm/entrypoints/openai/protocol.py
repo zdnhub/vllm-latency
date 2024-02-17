@@ -124,6 +124,8 @@ class CompletionRequest(BaseModel):
     user: Optional[str] = None
     # Additional parameters supported by vLLM
     top_k: Optional[int] = -1
+    prefix: Optional[str] = None
+    prefix_pos: Optional[int] = None
     ignore_eos: Optional[bool] = False
     use_beam_search: Optional[bool] = False
     stop_token_ids: Optional[List[int]] = Field(default_factory=list)
