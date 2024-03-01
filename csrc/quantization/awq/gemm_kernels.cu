@@ -1,3 +1,4 @@
+
 /*
 Adapted from https://github.com/mit-han-lab/llm-awq
 @article{lin2023awq,
@@ -11,10 +12,11 @@ Adapted from https://github.com/mit-han-lab/llm-awq
 
 #include <torch/extension.h>
 #include <c10/cuda/CUDAGuard.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_runtime.h>
+#include <cuda_fp16.h>
 
 #include "dequantize.cuh"
-
-#include <cuda_fp16.h>
 
 namespace vllm {
 namespace awq {
@@ -329,57 +331,6 @@ __global__ void __launch_bounds__(64) dequantize_weights(
 } // namespace awq
 } // namespace vllm
 
-torch::Tensor awq_dequantize(
-    torch::Tensor _kernel,
-    torch::Tensor _scaling_factors,
-    torch::Tensor _zeros,
-    int split_k_iters,
-    int thx,
-    int thy)
-{
-    int in_c = _kernel.size(0);
-    int qout_c = _kernel.size(1);
-    int out_c = qout_c * 8;
-    int G = in_c / _scaling_factors.size(0);
-
-    int x_thread = thx;
-    int y_thread = thy;
-
-    int x_blocks = 1;
-    int y_blocks = 1;
-    if (thx==0) {
-      x_thread = qout_c;
-    }
-    if (thy==0) {
-      y_thread = in_c;
-    }
-    if (thx==0 && thy==0) {
-      x_thread = 8;
-      y_thread = 8;
-      x_blocks = (int)(qout_c / 8);
-      y_blocks = (int)(in_c / 8);
-    }
-
-    const at::cuda::OptionalCUDAGuard device_guard(device_of(_scaling_factors));
-
-    auto options = torch::TensorOptions().dtype(_scaling_factors.dtype()).device(_scaling_factors.device());
-    at::Tensor _de_kernel = torch::empty({in_c, out_c}, options);
-
-    auto kernel = reinterpret_cast<int*>(_kernel.data_ptr<int>());
-    auto de_kernel = reinterpret_cast<half*>(_de_kernel.data_ptr<at::Half>());
-    auto scaling_factors = reinterpret_cast<half*>(_scaling_factors.data_ptr<at::Half>());
-    auto zeros = reinterpret_cast<int*>(_zeros.data_ptr<int>());
-
-    dim3 num_blocks(x_blocks, y_blocks);
-    dim3 threads_per_block(x_thread, y_thread);
-
-    const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    vllm::awq::dequantize_weights<<<num_blocks, threads_per_block, 0, stream>>>(
-        kernel, scaling_factors, zeros, de_kernel, G);
-
-    return _de_kernel;
-}
-
 // in_feats: M, IC [float16]
 // kernel: IC, OC // 8 [int32] -> cast to IC, OC [uint4b]
 // scaling_factors: IC // G, OC [float16]
@@ -419,7 +370,34 @@ torch::Tensor awq_gemm(
         throw std::invalid_argument("OC is not multiple of Group size");
 
     const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
-    if (num_out_channels % 128 == 0)
+    if (num_in_feats > 256) {
+
+      at::Tensor _de_kernel = torch::empty({num_in_channels, num_out_channels}, options);
+
+      auto de_kernel = reinterpret_cast<half*>(_de_kernel.data_ptr<at::Half>());
+
+      dim3 num_blocks((int)(num_out_channels / 8 / 8), (int)(num_in_channels / 8));
+      dim3 threads_per_block(8, 8);
+
+      vllm::awq::dequantize_weights<<<num_blocks, threads_per_block, 0, stream>>>(
+          kernel, scaling_factors, zeros, de_kernel, group_size);
+
+      const __half alpha = at::Half(1.0f);
+      const __half beta = at::Half(0.0f);
+      const cublasHandle_t cublas_handle = at::cuda::getCurrentCUDABlasHandle();
+      cublasSetStream(cublas_handle, stream);
+      cublasHgemm(
+        cublas_handle,
+        CUBLAS_OP_N,
+        CUBLAS_OP_N,
+        num_in_feats, num_out_channels, num_in_channels,
+        reinterpret_cast<const __half*>(&alpha),
+        in_feats, num_in_feats,
+        de_kernel, num_in_channels,
+        reinterpret_cast<const __half*>(&beta),
+        out_feats, num_in_feats);
+    }
+    else if (num_out_channels % 128 == 0)
     {
         int j_factors1 = num_out_channels / 128 / 1;
         dim3 num_blocks((num_out_feats + 16 - 1) / 16 * j_factors1 * split_k_iters);
