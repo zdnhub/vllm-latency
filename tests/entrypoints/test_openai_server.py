@@ -242,24 +242,34 @@ async def test_single_chat_session(server, client: openai.AsyncOpenAI,
     "model_name",
     [MODEL_NAME, "zephyr-lora"],
 )
+@pytest.mark.parametrize("max_tokens", [0, 5])
+@pytest.mark.parametrize("echo", [True, False])
 async def test_completion_streaming(server, client: openai.AsyncOpenAI,
-                                    model_name: str):
+                                    model_name: str, max_tokens: int,
+                                    echo: bool):
+    if not echo and not max_tokens:
+        pytest.skip("Skip empty completion without echo.")
+
     prompt = "What is an LLM?"
 
     single_completion = await client.completions.create(
         model=model_name,
         prompt=prompt,
-        max_tokens=5,
+        max_tokens=max_tokens,
+        echo=echo,
         temperature=0.0,
     )
     single_output = single_completion.choices[0].text
     single_usage = single_completion.usage
 
-    stream = await client.completions.create(model=model_name,
-                                             prompt=prompt,
-                                             max_tokens=5,
-                                             temperature=0.0,
-                                             stream=True)
+    stream = await client.completions.create(
+        model=model_name,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        echo=echo,
+        temperature=0.0,
+        stream=True,
+    )
     chunks = []
     async for chunk in stream:
         chunks.append(chunk.choices[0].text)
@@ -362,6 +372,32 @@ async def test_batch_completions(server, client: openai.AsyncOpenAI,
         choice = chunk.choices[0]
         texts[choice.index] += choice.text
     assert texts[0] == texts[1]
+
+
+@pytest.mark.parametrize(
+    # just test 1 lora hereafter
+    "model_name",
+    [MODEL_NAME, "zephyr-lora"],
+)
+async def test_batch_completions_echo_max_tokens_zero(
+    server,
+    client: openai.AsyncOpenAI,
+    model_name: str,
+):
+    # test simple list
+    prompt = "Hello, my name is"
+    batch = await client.completions.create(
+        model=model_name,
+        prompt=[prompt, prompt],
+        max_tokens=0,
+        temperature=0.0,
+        echo=True,
+    )
+    assert len(batch.choices) == 2
+    assert batch.choices[0].text == batch.choices[1].text == prompt
+    assert batch.usage.completion_tokens == 0
+    assert batch.usage.prompt_tokens == 12
+    assert batch.usage.total_tokens == 12
 
 
 async def test_logits_bias(server, client: openai.AsyncOpenAI):
