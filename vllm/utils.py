@@ -128,6 +128,7 @@ def is_neuron() -> bool:
 
 
 def get_max_shared_memory_bytes(gpu: int = 0) -> int:
+    from vllm._C import cuda_utils
     """Returns the maximum shared memory per thread block in bytes."""
     # NOTE: This import statement should be executed lazily since
     # the Neuron-X backend does not have the `cuda_utils` module.
@@ -318,6 +319,8 @@ class measure_cuda_memory:
         self.device = device
 
     def current_memory_usage(self) -> float:
+        if self.device and self.device.type == 'cpu':
+            return 0.0
         # Return the memory usage in bytes.
         torch.cuda.reset_peak_memory_stats(self.device)
         mem = torch.cuda.max_memory_allocated(self.device)

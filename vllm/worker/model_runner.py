@@ -62,6 +62,7 @@ class ModelRunner:
         self.model = None
         self.block_size = None  # Set after initial profiling.
         self.lora_manager = None
+        self.device = self.model_config.device
 
         self.graph_runners: Dict[int, CUDAGraphRunner] = {}
         self.graph_memory_pool = None  # Set during graph capture.
@@ -85,7 +86,7 @@ class ModelRunner:
             self.model_config.enforce_eager = True
 
     def load_model(self) -> None:
-        with measure_cuda_memory() as m:
+        with measure_cuda_memory(self.device) as m:
             self.model = get_model(self.model_config,
                                    self.device_config,
                                    lora_config=self.lora_config,
@@ -411,7 +412,7 @@ class ModelRunner:
         selected_token_start_idx = 0
         categorized_sample_indices = {t: [] for t in SamplingType}
         categorized_sample_indices_start_idx = 0
-        pin_memory = not self.in_wsl and not self.device_config.is_neuron
+        pin_memory = not self.in_wsl and not self.device_config.is_neuron and self.device.type != "cpu"
 
         max_subquery_len = max(subquery_lens) if subquery_lens else 1
         for i, seq_group_metadata in enumerate(seq_group_metadata_list):

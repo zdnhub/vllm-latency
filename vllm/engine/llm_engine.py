@@ -37,6 +37,7 @@ _LOCAL_LOGGING_INTERVAL_SEC = 5
 # A map between the device type (in device config) to its worker module.
 DEVICE_TO_WORKER_MODULE_MAP = {
     "cuda": "vllm.worker.worker",
+    "cpu": "vllm.worker.worker",
     "neuron": "vllm.worker.neuron_worker",
 }
 
@@ -378,12 +379,14 @@ class LLMEngine:
         logger.info(f"# GPU blocks: {num_gpu_blocks}, "
                     f"# CPU blocks: {num_cpu_blocks}")
 
-        if num_gpu_blocks <= 0:
-            raise ValueError("No available memory for the cache blocks. "
-                             "Try increasing `gpu_memory_utilization` when "
-                             "initializing the engine.")
+        if num_gpu_blocks < 0:
+            raise ValueError(
+                "No available memory for the cache blocks. "
+                "Try increasing `gpu_memory_utilization` or `swap_space` when "
+                "initializing the engine.")
         max_seq_len = self.cache_config.block_size * num_gpu_blocks
-        if self.model_config.max_model_len > max_seq_len:
+        if self.model_config.max_model_len > max_seq_len and str(
+                self.model_config.device) != 'cpu':
             raise ValueError(
                 f"The model's max seq len ({self.model_config.max_model_len}) "
                 "is larger than the maximum number of tokens that can be "
@@ -886,7 +889,7 @@ class LLMEngine:
         # KV Cache Usage in %.
         num_total_gpu = self.cache_config.num_gpu_blocks
         num_free_gpu = self.scheduler.block_manager.get_num_free_gpu_blocks()
-        gpu_cache_usage = 1.0 - (num_free_gpu / num_total_gpu)
+        gpu_cache_usage = 0.0 if num_total_gpu == 0 else 1.0 - (num_free_gpu / num_total_gpu)
 
         num_total_cpu = self.cache_config.num_cpu_blocks
         cpu_cache_usage = 0.
