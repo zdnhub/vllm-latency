@@ -91,6 +91,7 @@ Documentation
    :caption: Quantization
 
    quantization/auto_awq
+   quantization/auto_quant
    quantization/fp8_e5m2_kv_cache
 
 .. toctree::
