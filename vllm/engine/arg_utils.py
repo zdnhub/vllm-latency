@@ -32,6 +32,8 @@ class EngineArgs:
     max_num_seqs: int = 256
     max_paddings: int = 256
     max_logprobs: int = 5  # OpenAI default value
+    scheduler_policy: str = 'fcfs'
+    scheduler_reorder_window: float = 0
     disable_log_stats: bool = False
     revision: Optional[str] = None
     code_revision: Optional[str] = None
@@ -219,6 +221,15 @@ class EngineArgs:
             default=EngineArgs.max_logprobs,
             help=('max number of log probs to return logprobs is specified in'
                   ' SamplingParams'))
+        parser.add_argument('--scheduler-policy',
+                            type=str,
+                            default=EngineArgs.scheduler_policy,
+                            choices=['fcfs', 'reorder'],
+                            help='scheduler policy')
+        parser.add_argument('--scheduler-reorder-window',
+                            type=float,
+                            default=EngineArgs.scheduler_reorder_window,
+                            help='allowed sequences reorder window(in sec)')
         parser.add_argument('--disable-log-stats',
                             action='store_true',
                             help='disable logging statistics')
@@ -323,7 +334,9 @@ class EngineArgs:
         scheduler_config = SchedulerConfig(self.max_num_batched_tokens,
                                            self.max_num_seqs,
                                            model_config.max_model_len,
-                                           self.max_paddings)
+                                           self.max_paddings,
+                                           self.scheduler_policy,
+                                           self.scheduler_reorder_window)
         lora_config = LoRAConfig(
             max_lora_rank=self.max_lora_rank,
             max_loras=self.max_loras,

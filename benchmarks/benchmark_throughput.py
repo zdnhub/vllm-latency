@@ -74,6 +74,9 @@ def run_vllm(
     kv_cache_dtype: str,
     device: str,
     enable_prefix_caching: bool,
+    scheduler_policy: str,
+    scheduler_reorder_window: float,
+    swap_space: int,
     gpu_memory_utilization: float = 0.9,
 ) -> float:
     from vllm import LLM, SamplingParams
@@ -89,8 +92,10 @@ def run_vllm(
               enforce_eager=enforce_eager,
               kv_cache_dtype=kv_cache_dtype,
               device=device,
-              enable_prefix_caching=enable_prefix_caching)
-
+              enable_prefix_caching=enable_prefix_caching,
+              scheduler_policy=scheduler_policy,
+              scheduler_reorder_window=scheduler_reorder_window,
+              swap_space=swap_space)
     # Add the requests to the engine.
     for prompt, _, output_len in requests:
         sampling_params = SamplingParams(
@@ -213,7 +218,9 @@ def main(args: argparse.Namespace):
             args.tensor_parallel_size, args.seed, args.n, args.use_beam_search,
             args.trust_remote_code, args.dtype, args.max_model_len,
             args.enforce_eager, args.kv_cache_dtype, args.device,
-            args.enable_prefix_caching, args.gpu_memory_utilization)
+            args.enable_prefix_caching, args.vllm_scheduler_policy,
+            args.vllm_scheduler_reorder_window, args.swap_space,
+            args.gpu_memory_utilization)
     elif args.backend == "hf":
         assert args.tensor_parallel_size == 1
         elapsed_time = run_hf(requests, args.model, tokenizer, args.n,
@@ -236,6 +243,13 @@ if __name__ == "__main__":
                         type=str,
                         choices=["vllm", "hf", "mii"],
                         default="vllm")
+    parser.add_argument("--vllm-scheduler-policy",
+                        type=str,
+                        choices=["fcfs", "reorder"],
+                        default="fcfs")
+    parser.add_argument("--vllm-scheduler-reorder-window",
+                        type=float,
+                        default=0)
     parser.add_argument("--dataset",
                         type=str,
                         default=None,
@@ -314,6 +328,10 @@ if __name__ == "__main__":
         "--enable-prefix-caching",
         action='store_true',
         help="enable automatic prefix caching for vLLM backend.")
+    parser.add_argument('--swap-space',
+                        type=int,
+                        default=16,
+                        help='CPU swap space size (GiB) per GPU')
     args = parser.parse_args()
     if args.tokenizer is None:
         args.tokenizer = args.model
