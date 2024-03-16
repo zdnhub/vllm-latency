@@ -83,8 +83,8 @@ class Sampler(nn.Module):
         logits = _apply_logits_processors(logits, sampling_metadata)
 
         # Prepare sampling tensors with pinned memory to avoid blocking.
-        (sampling_tensors, do_penalties, do_top_p_top_k,
-         do_min_p) = SamplingTensors.from_sampling_metadata(
+        (sampling_tensors, do_penalties, do_top_p_top_k, do_min_p,
+         do_quadratic) = SamplingTensors.from_sampling_metadata(
              sampling_metadata, vocab_size, logits.device, logits.dtype)
 
         # Apply presence and frequency penalties.
@@ -105,6 +105,11 @@ class Sampler(nn.Module):
 
         if do_min_p:
             logits = _apply_min_p(logits, sampling_tensors.min_ps)
+
+        if do_quadratic:
+            logits = _apply_quadratic_sampling(
+                logits, sampling_tensors.smoothing_factors,
+                sampling_tensors.smoothing_curves)
 
         # We use float32 for probabilities and log probabilities.
         # Compute the probabilities.
@@ -242,6 +247,42 @@ def _apply_min_p(
     logits = logits.masked_fill_(tokens_to_remove, -float("inf"))
 
     return logits
+
+
+# torch.jit will fuse pointwise ops for better performance
+@torch.jit.script
+def _apply_quadratic_sampling(
+    logits: torch.Tensor,
+    smoothing_factors: torch.Tensor,
+    smoothing_curves: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Applies quadratic and cubic transformation to the logits based
+    on the provided smoothing factors and curves. The transformation
+    is centered around the maximum logit value in the batch.
+
+    Credits: @kalomaze
+    Adapted from
+    https://github.com/PygmalionAI/aphrodite-engine/blob/13d850334e2ad2cb00aba251bf91f8d20f495d98/aphrodite/modeling/layers/sampler.py#L435-L476
+    """
+    max_logits = logits.max(dim=-1, keepdim=True).values
+    diff = logits - max_logits
+    smoothing_factors.unsqueeze_(dim=1)
+    smoothing_curves.unsqueeze_(dim=1)
+
+    k = (3 - smoothing_curves) / 2
+    s = (smoothing_curves - 1) / 2
+
+    mask = smoothing_factors > 0
+    mask = mask.expand(logits.shape[0], logits.shape[1])
+
+    # only transform logits when they're not -inf, otherwise
+    # fails at smoothing_curves==3
+    transformed_logits = torch.where(
+        (logits != float('-inf')) & mask, -(k * smoothing_factors * diff**2) +
+        (s * smoothing_factors * diff**3) + max_logits, logits)
+
+    return transformed_logits
 
 
 def _greedy_sample(
