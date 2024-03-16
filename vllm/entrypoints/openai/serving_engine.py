@@ -74,6 +74,7 @@ class OpenAIServing:
             lora_int_id=len(self.lora_requests) + 1,
             lora_local_path=lora_local_path
         ))
+        return None
 
     async def show_available_models(self) -> ModelList:
         """Show available models. Right now we only have one model."""
