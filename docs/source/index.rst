@@ -75,6 +75,7 @@ Documentation
    serving/deploying_with_triton
    serving/deploying_with_bentoml
    serving/deploying_with_docker
+   serving/load_balancing
    serving/serving_with_langchain
    serving/metrics
 
