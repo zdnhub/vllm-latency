@@ -13,7 +13,7 @@ from ..conftest import get_tokenizer_pool_config
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tokenizer_group_type", [None, "ray"])
+@pytest.mark.parametrize("tokenizer_group_type", [None, "ray", "thread"])
 async def test_tokenizer_group(tokenizer_group_type):
     reference_tokenizer = AutoTokenizer.from_pretrained("gpt2")
     tokenizer_group = get_tokenizer_group(
@@ -35,11 +35,12 @@ async def test_tokenizer_group(tokenizer_group_type):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tokenizer_group_type", ["ray"])
+@pytest.mark.parametrize("tokenizer_group_type", ["ray", "thread"])
 async def test_tokenizer_group_pool(tokenizer_group_type):
     reference_tokenizer = AutoTokenizer.from_pretrained("gpt2")
+    tokenizer_pool_config = get_tokenizer_pool_config(tokenizer_group_type)
     tokenizer_group_pool = get_tokenizer_group(
-        get_tokenizer_pool_config(tokenizer_group_type),
+        tokenizer_pool_config,
         tokenizer_id="gpt2",
         enable_lora=False,
         max_num_seqs=1,
@@ -48,7 +49,7 @@ async def test_tokenizer_group_pool(tokenizer_group_type):
     # Send multiple requests to the tokenizer group pool
     # (more than the pool size)
     # and check that all requests are processed correctly.
-    num_requests = tokenizer_group_pool.pool_size * 5
+    num_requests = tokenizer_pool_config.pool_size * 5
     requests = [
         tokenizer_group_pool.encode_async(request_id=str(i),
                                           prompt=f"prompt {i}",
@@ -63,7 +64,7 @@ async def test_tokenizer_group_pool(tokenizer_group_type):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tokenizer_group_type", ["ray"])
+@pytest.mark.parametrize("tokenizer_group_type", ["ray", "thread"])
 async def test_tokenizer_group_ray_pool_env_var_propagation(
         tokenizer_group_type):
     """Test that env vars from caller process are propagated to
