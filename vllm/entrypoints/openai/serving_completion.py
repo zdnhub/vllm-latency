@@ -377,3 +377,7 @@ class OpenAIServingCompletion(OpenAIServing):
             choices=choices,
             usage=usage,
         )
+
+
+    async def create_embeddings(self, input: str, model: str):
+        raise NotImplementedError

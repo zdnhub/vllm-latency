@@ -2,6 +2,8 @@ import contextlib
 import time
 from typing import Dict, List, Optional, Tuple, Set, Union
 
+import inspect
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -559,16 +561,19 @@ class ModelRunner:
         (input_tokens, input_positions, input_metadata, sampling_metadata,
          lora_requests,
          lora_mapping) = self.prepare_input_tensors(seq_group_metadata_list)
-
         if self.lora_config:
             self.set_active_loras(lora_requests, lora_mapping)
-
         # Execute the model.
         if input_metadata.use_cuda_graph:
             graph_batch_size = input_tokens.shape[0]
             model_executable = self.graph_runners[graph_batch_size]
         else:
             model_executable = self.model
+
+        # print("forward")
+        # This should be the foward loop
+        args_spec = inspect.getfullargspec(model_executable.forward)
+        # print("input meta", input_metadata)
         hidden_states = model_executable(
             input_ids=input_tokens,
             positions=input_positions,
