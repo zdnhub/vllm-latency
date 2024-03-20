@@ -10,6 +10,7 @@ from vllm.model_executor.input_metadata import InputMetadata
 from vllm.utils import is_hip
 
 logger = init_logger(__name__)
+from vllm.block import KVCache
 
 
 class Attention(nn.Module):
@@ -35,10 +36,17 @@ class Attention(nn.Module):
     ) -> None:
         super().__init__()
         if _use_flash_attn():
-            from vllm.model_executor.layers.attention.backends.flash_attn import FlashAttentionBackend  # noqa: E501
-            self.backend = FlashAttentionBackend(num_heads, head_size, scale,
-                                                 num_kv_heads, alibi_slopes,
-                                                 sliding_window)
+            if __import__("os").getenv("VLLM_TEMP_USE_FLASH", "0") == "1":
+                from vllm.model_executor.layers.attention.backends.flashinfer import FlashInferBackend
+                self.backend = FlashInferBackend(
+                    num_heads, head_size, scale, num_kv_heads, alibi_slopes,
+                    sliding_window)
+            else:
+                from vllm.model_executor.layers.attention.backends.flash_attn import FlashAttentionBackend
+                self.backend = FlashAttentionBackend(num_heads, head_size,
+                                                     scale, num_kv_heads,
+                                                     alibi_slopes,
+                                                     sliding_window)
         else:
             from vllm.model_executor.layers.attention.backends.xformers import XFormersBackend  # noqa: E501
             self.backend = XFormersBackend(num_heads, head_size, scale,
@@ -50,11 +58,10 @@ class Attention(nn.Module):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        key_cache: Optional[torch.Tensor],
-        value_cache: Optional[torch.Tensor],
+        kv_cache: Optional[KVCache],
         input_metadata: InputMetadata,
     ) -> torch.Tensor:
-        return self.backend.forward(query, key, value, key_cache, value_cache,
+        return self.backend.forward(query, key, value, kv_cache,
                                     input_metadata)
 
 

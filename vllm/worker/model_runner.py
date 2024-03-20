@@ -25,7 +25,8 @@ from vllm.utils import in_wsl, measure_cuda_memory
 
 logger = init_logger(__name__)
 
-KVCache = Tuple[torch.Tensor, torch.Tensor]
+from vllm.block import KVCache
+
 _PAD_SLOT_ID = -1
 LORA_WARMUP_RANK = 8
 # Capture graphs for batch size 1, 2, 4, 8, 16, 24, 32, 40, ..., 256.
@@ -83,6 +84,15 @@ class ModelRunner:
         # Set enforce_eager to True for Neuron backend, to avoid capturing graph
         if self.device_config.is_neuron:
             self.model_config.enforce_eager = True
+
+        self.use_flash_infer = __import__("os").getenv("VLLM_TEMP_USE_FLASH", "0") == "1"
+        if self.use_flash_infer:
+            from flashinfer import BatchDecodeWithPagedKVCacheWrapper
+            workspace_buffer = torch.empty(16 * 1024 * 1024, dtype=torch.uint8, device=self.device)
+            self.decoder_wrapper = BatchDecodeWithPagedKVCacheWrapper(
+                workspace_buffer, "NHD")
+        else:
+            self.decoder_wrapper = None
 
     def load_model(self) -> None:
         with measure_cuda_memory() as m:
@@ -252,7 +262,7 @@ class ModelRunner:
         prompt_lens_tensor = torch.tensor(prompt_lens,
                                           dtype=torch.long,
                                           device=self.device)
-
+        
         input_metadata = InputMetadata(
             is_prompt=True,
             slot_mapping=slot_mapping,
@@ -264,6 +274,7 @@ class ModelRunner:
             block_tables=block_tables,
             use_cuda_graph=False,
             kv_cache_dtype=self.kv_cache_dtype,
+            decoder_wrapper=self.decoder_wrapper,
         )
         return (input_tokens, input_positions, input_metadata, prompt_lens,
                 subquery_lens, lora_index_mapping, lora_prompt_mapping,
@@ -380,6 +391,24 @@ class ModelRunner:
         lora_index_mapping = [
             _pad_to_max(mapping, 1, pad=0) for mapping in lora_index_mapping
         ]
+        
+        if self.use_flash_infer:
+            self.decoder_wrapper.end_forward()
+            kv_page_indptr = torch.tensor([0] + list(map(len, block_tables)), dtype=torch.int32, device=self.device)
+            kv_page_indptr = torch.cumsum(kv_page_indptr, dim=0, dtype=torch.int32)
+            kv_page_indices = torch.cat([torch.tensor(t, dtype=torch.int32) for t in block_tables]).to(self.device)
+            kv_last_page_len = torch.tensor(context_lens, dtype=torch.int32, device=self.device) % self.block_size
+            self.decoder_wrapper.begin_forward(
+                kv_page_indptr,
+                kv_page_indices,
+                kv_last_page_len,
+                self.model_config.get_num_heads(),
+                self.model_config.get_total_num_kv_heads(),
+                self.model_config.get_head_size(),
+                self.block_size,
+                pos_encoding_mode="NONE",
+                data_type=self.model_config.dtype,
+            )
 
         input_metadata = InputMetadata(
             is_prompt=False,
@@ -392,6 +421,7 @@ class ModelRunner:
             block_tables=block_tables,
             use_cuda_graph=use_captured_graph,
             kv_cache_dtype=self.kv_cache_dtype,
+            decoder_wrapper=self.decoder_wrapper,
         )
         return (input_tokens, input_positions, input_metadata,
                 lora_index_mapping, lora_prompt_mapping, lora_requests)
@@ -554,7 +584,7 @@ class ModelRunner:
     def execute_model(
         self,
         seq_group_metadata_list: Optional[List[SequenceGroupMetadata]],
-        kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
+        kv_caches: List[KVCache],
     ) -> Optional[SamplerOutput]:
         (input_tokens, input_positions, input_metadata, sampling_metadata,
          lora_requests,
@@ -632,7 +662,7 @@ class ModelRunner:
 
         # Run the model with the dummy inputs.
         num_layers = self.model_config.get_num_layers(self.parallel_config)
-        kv_caches = [(None, None)] * num_layers
+        kv_caches = [None] * num_layers
         self.execute_model(seqs, kv_caches)
         torch.cuda.synchronize()
         return
