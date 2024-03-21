@@ -10,6 +10,9 @@ from vllm.sampling_params import SamplingParams
 
 import torch
 
+class AddLoraRequest(BaseModel):
+    lora_name: str
+    lora_local_path: str
 
 class ErrorResponse(BaseModel):
     object: str = "error"

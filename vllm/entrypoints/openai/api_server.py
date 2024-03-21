@@ -18,6 +18,7 @@ from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
 from vllm.entrypoints.openai.protocol import (CompletionRequest,
                                               ChatCompletionRequest,
+                                              AddLoraRequest,
                                               ErrorResponse)
 from vllm.logger import init_logger
 from vllm.entrypoints.openai.cli_args import make_arg_parser
@@ -81,6 +82,11 @@ async def show_available_models():
 async def show_version():
     ver = {"version": vllm.__version__}
     return JSONResponse(content=ver)
+
+@app.get("/add_lora")
+async def add_lora(request: AddLoraRequest):
+    openai_serving_chat.add_lora(request.lora_name, request.lora_local_path)
+    return Response(status_code=200)
 
 
 @app.post("/v1/chat/completions")
