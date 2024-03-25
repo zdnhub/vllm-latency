@@ -77,6 +77,20 @@ async def show_available_models():
     return JSONResponse(content=models.model_dump())
 
 
+@app.put("/-/lora_cache")
+async def add_lora_request(request: LoRA,
+                               raw_request: Request):
+    model_card = await openai_serving_chat.add_lora(request)
+    return JSONResponse(content=model_card.model_dump())
+
+
+@app.delete("/-/lora_cache/{model}")
+async def show_available_model(model: str):
+    delete_response = await openai_serving_chat.delete_lora(model)
+
+    return JSONResponse(content=delete_response)
+
+
 @app.get("/version")
 async def show_version():
     ver = {"version": vllm.__version__}
