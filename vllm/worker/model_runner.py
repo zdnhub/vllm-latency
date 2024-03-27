@@ -49,6 +49,7 @@ class ModelRunner:
         device_config: DeviceConfig,
         lora_config: Optional[LoRAConfig],
         kv_cache_dtype: Optional[str] = "auto",
+        kv_quant_params_path: Optional[str] = None,
         is_driver_worker: bool = False,
         vision_language_config: Optional[VisionLanguageConfig] = None,
     ):
@@ -85,10 +86,36 @@ class ModelRunner:
         self.graph_block_tables = None  # Set after initial profiling.
         self.pin_memory = is_pin_memory_available()
         self.kv_cache_dtype = kv_cache_dtype
+        self.kv_quant_params = self.load_kv_quant_params(
+            model_config,
+            kv_quant_params_path) if self.kv_cache_dtype == "int8" else None
+
         self.vision_language_config = vision_language_config
 
         self.attn_backend = get_attn_backend(
             self.model_config.dtype if model_config is not None else None)
+
+    def load_kv_quant_params(self, model_config: ModelConfig,
+                             kv_quant_params_path: str) -> List[List[float]]:
+        if model_config is None:
+            return None
+        # Remove it when all models support kv cache int8.
+        architectures = model_config.hf_config.architectures
+        for arch in architectures:
+            if arch not in ["LlamaForCausalLM", "LLaMAForCausalLM"]:
+                raise ValueError(
+                    "KV CACHE INT8 is not supported for model "
+                    f"architectures {arch} for now. Supported architectures: "
+                    "LlamaForCausalLM, LLaMAForCausalLM.")
+        num_layers = model_config.hf_config.num_hidden_layers
+        kv_quant_params = []
+        if kv_quant_params_path is not None:
+            for i in range(num_layers):
+                path = kv_quant_params_path \
+                     + f"/layers.{i}.past_kv_scale.0.weight"
+                kv_quant_param = list(np.fromfile(path, dtype=np.float32))
+                kv_quant_params.append(kv_quant_param)
+        return kv_quant_params
 
     def load_model(self) -> None:
         with CudaMemoryProfiler() as m:
@@ -309,6 +336,7 @@ class ModelRunner:
             block_tables=block_tables,
             use_cuda_graph=False,
             kv_cache_dtype=self.kv_cache_dtype,
+            kv_quant_param=self.kv_quant_params,
         )
         return (input_tokens, input_positions, attn_metadata, prompt_lens,
                 subquery_lens, lora_index_mapping, lora_prompt_mapping,
@@ -440,6 +468,7 @@ class ModelRunner:
             block_tables=block_tables,
             use_cuda_graph=use_captured_graph,
             kv_cache_dtype=self.kv_cache_dtype,
+            kv_quant_param=self.kv_quant_params,
         )
         return (input_tokens, input_positions, attn_metadata,
                 lora_index_mapping, lora_prompt_mapping, lora_requests)
@@ -820,6 +849,7 @@ class ModelRunner:
                     block_tables=block_tables[:batch_size],
                     use_cuda_graph=True,
                     kv_cache_dtype=self.kv_cache_dtype,
+                    kv_quant_param=self.kv_quant_params,
                 )
 
                 if self.lora_config:

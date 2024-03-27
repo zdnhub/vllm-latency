@@ -32,7 +32,7 @@ HEAD_SIZES = [64, 80, 96, 112, 128, 256
 
 BLOCK_SIZES = [16, 32]
 USE_ALIBI = [False, True]
-KV_CACHE_DTYPE = ["auto", "fp8_e5m2"]
+KV_CACHE_DTYPE = ["auto", "fp8_e5m2", "int8"]
 SEEDS = [0]
 CUDA_DEVICES = [
     f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)
@@ -172,6 +172,18 @@ def test_paged_attention(
                                                 device)
     key_cache, value_cache = key_caches[0], value_caches[0]
 
+    # KV quant parameters for kv_cache_dtype=int8.
+    # NOTE(zhangying): These parameters only work when kv_cache_dtype is int8.
+    # They have no influence on other kv_cache_dtypes, like auto and fp8_e5m2.
+    # For Llama-13B, we find that the key scale distribution in [0.05, 0.15],
+    # the value scale distribution range is [0.005, 0.10],
+    # the key zero point distribution range is [-1.5, 1.5],
+    # the value zero point distribution range is [-2.0, 2.0].
+    k_scale = random.random() * 0.10 + 0.05
+    v_scale = random.random() * 0.095 + 0.005
+    k_zp = random.random() * 3.0 - 1.5
+    v_zp = random.random() * 4.0 - 2.0
+
     # Call the paged attention kernel.
     output = torch.empty_like(query)
     if version == "v1":
@@ -188,6 +200,10 @@ def test_paged_attention(
             max_context_len,
             alibi_slopes,
             kv_cache_dtype,
+            k_scale,
+            k_zp,
+            v_scale,
+            v_zp,
         )
     elif version == "v2":
         num_partitions = ((max_context_len + PARTITION_SIZE - 1) //
@@ -219,6 +235,10 @@ def test_paged_attention(
             max_context_len,
             alibi_slopes,
             kv_cache_dtype,
+            k_scale,
+            k_zp,
+            v_scale,
+            v_zp,
         )
     else:
         raise AssertionError(f"Unknown version: {version}")
@@ -241,6 +261,10 @@ def test_paged_attention(
                                               device=device)
         cache_ops.convert_fp8_e5m2(value_cache, dequantized_value_cache)
         value_cache = dequantized_value_cache
+    elif kv_cache_dtype == "int8":
+        # Convert cache data back to dtype.
+        key_cache = ((key_cache * k_scale) + k_zp).to(dtype)
+        value_cache = ((value_cache * v_scale) + v_zp).to(dtype)
 
     ref_output = torch.empty_like(query)
     ref_single_query_cached_kv_attention(
@@ -261,10 +285,15 @@ def test_paged_attention(
     atol = get_default_atol(output) if is_hip() else 1e-3
     rtol = get_default_rtol(output) if is_hip() else 1e-5
 
-    # NOTE(zhaoyang): FP8 KV Cache will introduce quantization error,
+    # NOTE(zhaoyang): FP8 KV Cache introduces quantization error,
+    # so we use a relaxed tolerance for the test.
+    # NOTE(zhangying): INT8 KV Cache introduces quantization error
+    # like FP8 KV Cache,
     # so we use a relaxed tolerance for the test.
     if kv_cache_dtype == "fp8_e5m2":
         atol, rtol = 1e-2, 1e-5
+    if kv_cache_dtype == "int8":
+        atol, rtol = 0.5, 1e-5
     assert torch.allclose(output, ref_output, atol=atol, rtol=rtol)
 
 

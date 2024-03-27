@@ -88,6 +88,7 @@ def run_vllm(
               gpu_memory_utilization=gpu_memory_utilization,
               enforce_eager=enforce_eager,
               kv_cache_dtype=kv_cache_dtype,
+              kv_quant_params_path=args.kv_quant_params_path,
               device=device,
               enable_prefix_caching=enable_prefix_caching)
 
@@ -300,10 +301,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--kv-cache-dtype",
         type=str,
-        choices=["auto", "fp8_e5m2"],
+        choices=["auto", "fp8_e5m2", "int8"],
         default="auto",
         help=
         'Data type for kv cache storage. If "auto", will use model data type.')
+    parser.add_argument(
+        "--kv-quant-params-path",
+        type=str,
+        default=None,
+        help='Path to scales and zero points of kv cache quantizaiton '
+        'when kv cache dtype is int8.')
     parser.add_argument(
         "--device",
         type=str,

@@ -32,6 +32,7 @@ class PagedAttentionMetadata:
     # captured.
     block_tables: Optional[torch.Tensor]
     kv_cache_dtype: str
+    kv_quant_param: List[List[float]]
 
 
 class PagedAttention:
@@ -73,15 +74,14 @@ class PagedAttention:
         value_cache: torch.Tensor,
         slot_mapping: torch.Tensor,
         kv_cache_dtype: str,
+        kv_quant_param: List[float],
     ) -> None:
-        cache_ops.reshape_and_cache(
-            key,
-            value,
-            key_cache,
-            value_cache,
-            slot_mapping.flatten(),
-            kv_cache_dtype,
-        )
+        kv_quant_param = kv_quant_param if \
+            kv_quant_param is not None else [1.0, 0.0, 1.0, 0.0]
+
+        cache_ops.reshape_and_cache(key, value, key_cache, value_cache,
+                                    slot_mapping.flatten(), kv_cache_dtype,
+                                    *kv_quant_param)
 
     @staticmethod
     def forward_decode(
@@ -92,6 +92,7 @@ class PagedAttention:
         context_lens: torch.Tensor,
         max_context_len: int,
         kv_cache_dtype: str,
+        kv_quant_param: List[float],
         num_kv_heads: int,
         scale: float,
         alibi_slopes: Optional[torch.Tensor],
@@ -111,6 +112,8 @@ class PagedAttention:
         # For context len > 8192, use V2 kernel to avoid shared memory shortage.
         use_v1 = (max_context_len <= 8192
                   and (max_num_partitions == 1 or num_seqs * num_heads > 512))
+        kv_quant_param = kv_quant_param if \
+            kv_quant_param is not None else [1.0, 0.0, 1.0, 0.0]
         if use_v1:
             # Run PagedAttention V1.
             ops.paged_attention_v1(
@@ -126,6 +129,7 @@ class PagedAttention:
                 max_context_len,
                 alibi_slopes,
                 kv_cache_dtype,
+                *kv_quant_param,
             )
         else:
             # Run PagedAttention V2.
@@ -157,6 +161,7 @@ class PagedAttention:
                 max_context_len,
                 alibi_slopes,
                 kv_cache_dtype,
+                *kv_quant_param,
             )
         return output
 

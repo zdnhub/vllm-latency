@@ -324,6 +324,8 @@ class CacheConfig:
             vLLM execution.
         swap_space: Size of the CPU swap space per GPU (in GiB).
         cache_dtype: Data type for kv cache storage.
+        cache_quant_params_path: Path to quant params of kv cache quantizaiton 
+            when cache_dtype is int8.
     """
 
     def __init__(
@@ -332,6 +334,7 @@ class CacheConfig:
         gpu_memory_utilization: float,
         swap_space: int,
         cache_dtype: str,
+        cache_quant_params_path: Optional[str] = None,
         sliding_window: Optional[int] = None,
         enable_prefix_caching: bool = False,
     ) -> None:
@@ -339,6 +342,7 @@ class CacheConfig:
         self.gpu_memory_utilization = gpu_memory_utilization
         self.swap_space_bytes = swap_space * _GB
         self.cache_dtype = cache_dtype
+        self.cache_quant_params_path = cache_quant_params_path
         self.sliding_window = sliding_window
         self.enable_prefix_caching = enable_prefix_caching
         self._verify_args()
@@ -360,7 +364,7 @@ class CacheConfig:
                 f"{self.gpu_memory_utilization}.")
 
     def _verify_cache_dtype(self) -> None:
-        if self.cache_dtype == "auto":
+        if self.cache_dtype in ["auto", "int8"]:
             pass
         elif self.cache_dtype == "fp8_e5m2":
             if is_hip():

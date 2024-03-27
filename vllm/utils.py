@@ -26,6 +26,7 @@ STR_DTYPE_TO_TORCH_DTYPE = {
     "bfloat16": torch.bfloat16,
     "float": torch.float,
     "fp8_e5m2": torch.uint8,
+    "int8": torch.int8,
 }
 
 
@@ -290,7 +291,7 @@ def create_kv_caches_with_random(
                 torch_dtype = model_dtype
             else:
                 raise ValueError(f"Invalid model dtype: {model_dtype}")
-        elif cache_dtype in ["half", "bfloat16", "float"]:
+        elif cache_dtype in ["half", "bfloat16", "float", "int8"]:
             torch_dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_dtype]
         elif cache_dtype == "fp8_e5m2":
             torch_dtype = torch.uint8
@@ -311,6 +312,8 @@ def create_kv_caches_with_random(
                                 device=device)
         if cache_dtype == 'fp8_e5m2':
             _generate_random_fp8_e5m2(key_cache, -scale, scale)
+        elif cache_dtype == "int8":
+            torch.randint(-128, 127, key_cache.size(), out=key_cache)
         elif torch_dtype in [torch.half, torch.bfloat16, torch.float]:
             key_cache.uniform_(-scale, scale)
         else:
@@ -326,6 +329,8 @@ def create_kv_caches_with_random(
                                   device=device)
         if cache_dtype == 'fp8_e5m2':
             _generate_random_fp8_e5m2(value_cache, -scale, scale)
+        elif cache_dtype == "int8":
+            torch.randint(-128, 127, value_cache.size(), out=value_cache)
         elif torch_dtype in [torch.half, torch.bfloat16, torch.float]:
             value_cache.uniform_(-scale, scale)
         else:

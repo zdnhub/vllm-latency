@@ -23,7 +23,7 @@ SEEDS = [0]
 CUDA_DEVICES = [
     f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)
 ]
-KV_CACHE_DTYPE = ["auto", "fp8_e5m2"]
+KV_CACHE_DTYPE = ["auto", "fp8_e5m2", "int8"]
 
 
 @pytest.mark.parametrize("num_mappings", NUM_MAPPINGS)
@@ -141,8 +141,11 @@ def test_reshape_and_cache(
     cloned_value_cache = value_cache.clone()
 
     # Call the reshape_and_cache kernel.
+    # NOTE(zhangying): The params `1.0, 0.0, 1.0, 0.0`
+    # are to fit function argument list.
+    # They only work when the kv_cache_dtype is int8.
     cache_ops.reshape_and_cache(key, value, key_cache, value_cache,
-                                slot_mapping, "auto")
+                                slot_mapping, "auto", 1.0, 0.0, 1.0, 0.0)
 
     # Run the reference implementation.
     reshaped_key = key.reshape(num_tokens, *key_cache[0, :, :, 0, :].shape)
