@@ -5,7 +5,9 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
+from vllm._C import ops
 from vllm.logger import init_logger
+from vllm.model_executor.layers.fused_moe import fused_moe, fused_topk
 from vllm.model_executor.parallel_utils.communication_op import (
     tensor_model_parallel_all_gather, tensor_model_parallel_all_reduce)
 from vllm.model_executor.parallel_utils.parallel_state import (
@@ -44,6 +46,68 @@ class LinearMethodBase(ABC):
         """Apply the weights to the input tensor."""
         raise NotImplementedError
 
+    def create_moe_weights(self, num_experts: int,
+                           input_size_per_partition: int,
+                           output_size_per_partition: int, input_size: int,
+                           output_size: int,
+                           params_dtype: torch.dtype) -> Dict[str, Any]:
+        """Creating moe weights"""
+        linear_weights = self.create_weights(input_size_per_partition,
+                                             output_size_per_partition,
+                                             input_size, output_size,
+                                             params_dtype)
+        if num_experts == 1:
+            return linear_weights
+        for name, param in tuple(linear_weights.items()):
+            if isinstance(param, Parameter):
+                repeat_size = (num_experts, ) + (1, ) * param.dim()
+                new_param = Parameter(param.unsqueeze(0).repeat(*repeat_size),
+                                      requires_grad=False)
+                set_weight_attrs(new_param, param.__dict__)
+                linear_weights[name] = new_param
+        return linear_weights
+
+    def apply_moe_weights(self, w1: Dict[str,
+                                         torch.Tensor], w2: Dict[str,
+                                                                 torch.Tensor],
+                          x: torch.Tensor, gating_output: torch.Tensor,
+                          topk: int, renormalize: bool) -> torch.Tensor:
+        """Apply the weights to the input tensor."""
+        routing_weights, selected_experts = fused_topk(gating_output,
+                                                       topk,
+                                                       renormalize=renormalize)
+        final_hidden_states = None
+        num_experts = gating_output.shape[-1]
+        for expert_idx in range(num_experts):
+            w1_expert = {
+                key:
+                value[expert_idx] if isinstance(value, torch.Tensor) else value
+                for key, value in w1.items()
+            }
+            w2_expert = {
+                key:
+                value[expert_idx] if isinstance(value, torch.Tensor) else value
+                for key, value in w2.items()
+            }
+            expert_mask = (selected_experts == expert_idx)
+            expert_weights = (routing_weights * expert_mask).sum(dim=-1,
+                                                                 keepdim=True)
+            hidden_states = self.apply_weights(w1_expert, x)
+            output_shape = (hidden_states.shape[:-1] +
+                            (hidden_states.shape[-1] // 2, ))
+            out = torch.empty(output_shape,
+                              dtype=hidden_states.dtype,
+                              device=hidden_states.device)
+            ops.silu_and_mul(out, hidden_states)
+            current_hidden_states = self.apply_weights(
+                w2_expert, out).mul_(expert_weights)
+
+            if final_hidden_states is None:
+                final_hidden_states = current_hidden_states
+            else:
+                final_hidden_states.add_(current_hidden_states)
+        return final_hidden_states
+
 
 class UnquantizedLinearMethod(LinearMethodBase):
     """Linear method without quantization.
@@ -77,6 +141,14 @@ class UnquantizedLinearMethod(LinearMethodBase):
                 return F.linear(x, weight) + bias
             return F.linear(x, weight)
         return F.linear(x, weight, bias)
+
+    def apply_moe_weights(self, w1: Dict[str,
+                                         torch.Tensor], w2: Dict[str,
+                                                                 torch.Tensor],
+                          x: torch.Tensor, gating_output: torch.Tensor,
+                          topk: int, renormalize: bool) -> torch.Tensor:
+        return fused_moe(x, w1["weight"], w2["weight"], gating_output, topk,
+                         renormalize)
 
 
 class ReplicatedLinear(torch.nn.Module):
@@ -161,6 +233,7 @@ class ColumnParallelLinear(torch.nn.Module):
         skip_bias_add: bool = False,
         params_dtype: Optional[torch.dtype] = None,
         linear_method: Optional[LinearMethodBase] = None,
+        num_experts: int = 1,
     ):
         super().__init__()
 
@@ -178,9 +251,10 @@ class ColumnParallelLinear(torch.nn.Module):
         if linear_method is None:
             linear_method = UnquantizedLinearMethod()
         self.linear_method = linear_method
-        self.linear_weights = self.linear_method.create_weights(
-            self.input_size, self.output_size_per_partition, self.input_size,
-            self.output_size, self.params_dtype)
+        self.num_experts = num_experts
+        self.linear_weights = self.linear_method.create_moe_weights(
+            num_experts, self.input_size, self.output_size_per_partition,
+            self.input_size, self.output_size, self.params_dtype)
         for name, weight in self.linear_weights.items():
             if isinstance(weight, torch.Tensor):
                 self.register_parameter(name, weight)
@@ -196,10 +270,20 @@ class ColumnParallelLinear(torch.nn.Module):
         else:
             self.register_parameter("bias", None)
 
-    def weight_loader(self, param: Parameter, loaded_weight: torch.Tensor):
+    def weight_loader(self,
+                      param: Parameter,
+                      loaded_weight: torch.Tensor,
+                      expert_id: int = -1):
         tp_rank = get_tensor_model_parallel_rank()
         output_dim = getattr(param, "output_dim", None)
         param_data = param.data
+        if self.num_experts > 1:
+            if expert_id >= 0:
+                param_data = param_data[expert_id]
+            # Loaded weight is packed at expert dim
+            else:
+                output_dim = output_dim + 1
+
         if output_dim is not None:
             shard_size = param_data.shape[output_dim]
             start_idx = tp_rank * shard_size
@@ -253,19 +337,28 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
         skip_bias_add: bool = False,
         params_dtype: Optional[torch.dtype] = None,
         linear_method: Optional[LinearMethodBase] = None,
+        num_experts: int = 1,
     ):
         self.output_sizes = output_sizes
         tp_size = get_tensor_model_parallel_world_size()
         assert all(output_size % tp_size == 0 for output_size in output_sizes)
         super().__init__(input_size, sum(output_sizes), bias, gather_output,
-                         skip_bias_add, params_dtype, linear_method)
+                         skip_bias_add, params_dtype, linear_method,
+                         num_experts)
 
     def weight_loader(self,
                       param: Parameter,
                       loaded_weight: torch.Tensor,
-                      loaded_shard_id: Optional[int] = None):
+                      loaded_shard_id: Optional[int] = None,
+                      expert_id: int = -1):
         param_data = param.data
         output_dim = getattr(param, "output_dim", None)
+        if self.num_experts > 1:
+            if expert_id >= 0:
+                param_data = param_data[expert_id]
+            # Loaded weight is packed at expert dim
+            elif output_dim is not None:
+                output_dim = output_dim + 1
         if loaded_shard_id is None:
             # Loaded weight is already packed.
             if output_dim is None:
@@ -506,6 +599,7 @@ class RowParallelLinear(torch.nn.Module):
         params_dtype: Optional[torch.dtype] = None,
         reduce_results: bool = True,
         linear_method: Optional[LinearMethodBase] = None,
+        num_experts: int = 1,
     ):
         super().__init__()
         # Keep input parameters
@@ -524,9 +618,10 @@ class RowParallelLinear(torch.nn.Module):
         if linear_method is None:
             linear_method = UnquantizedLinearMethod()
         self.linear_method = linear_method
-        self.linear_weights = self.linear_method.create_weights(
-            self.input_size_per_partition, self.output_size, self.input_size,
-            self.output_size, self.params_dtype)
+        self.num_experts = num_experts
+        self.linear_weights = self.linear_method.create_moe_weights(
+            num_experts, self.input_size_per_partition, self.output_size,
+            self.input_size, self.output_size, self.params_dtype)
         for name, weight in self.linear_weights.items():
             if isinstance(weight, torch.Tensor):
                 self.register_parameter(name, weight)
@@ -546,10 +641,19 @@ class RowParallelLinear(torch.nn.Module):
         else:
             self.register_parameter("bias", None)
 
-    def weight_loader(self, param: Parameter, loaded_weight: torch.Tensor):
+    def weight_loader(self,
+                      param: Parameter,
+                      loaded_weight: torch.Tensor,
+                      expert_id: int = -1):
         tp_rank = get_tensor_model_parallel_rank()
         input_dim = getattr(param, "input_dim", None)
         param_data = param.data
+        if self.num_experts > 1:
+            if expert_id >= 0:
+                param_data = param_data[expert_id]
+            # Loaded weight is packed at expert dim
+            elif input_dim is not None:
+                input_dim = input_dim + 1
         if input_dim is not None:
             shard_size = param_data.shape[input_dim]
             start_idx = tp_rank * shard_size
