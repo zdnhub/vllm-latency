@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from transformers import PreTrainedTokenizerBase
 
 
-class BaseLogitsProcessor:
+class BaseGuidedLogitsProcessor:
 
     def adapt_tokenizer(self, tokenizer: PreTrainedTokenizerBase):
         """Adapt vLLM's tokenizer to use to compile the FSM.
@@ -83,11 +83,30 @@ class BaseLogitsProcessor:
 
         if len(input_ids) == 0:
             self.init_state()
-        else:
+        elif not hasattr(self, "fsm_state") and len(input_ids) == 1:
+            # This special scenario arises during sampling strategies
+            # such as beam search when the number of sequences to be
+            # generated (`n`) is bigger then 1.
+            # During the initial step of beam search, only the input
+            #`prompt` is given, while the beams themselves are yet
+            # to be defined.
+            # Consequently, the logits will have a shape of
+            # [1, vocab_size].
+            # Due to this `self.fsm_stat` initialization will be
+            # triggered onlys for the very first `logits_processor`,
+            # leaving the remaining `n-1` uninitialized.
+            self.init_state()
+            empty_seq_id = hash(tuple([]))
+            self.fsm.allowed_token_ids(self.fsm_state[empty_seq_id])
+    
             last_token = input_ids[-1]
             last_seq_id = hash(tuple(input_ids[:-1]))
             self.fsm_state[seq_id] = self.fsm.next_state(
                 self.fsm_state[last_seq_id], last_token)
+        else:
+            raise ValueError(
+                f"Multiple ids were generated: {input_ids}, "
+                "while fsm is still not initialized")
 
         allowed_tokens = self.fsm.allowed_token_ids(self.fsm_state[seq_id])
 
@@ -100,7 +119,7 @@ class BaseLogitsProcessor:
         return scores
 
 
-class RegexLogitsProcessor(BaseLogitsProcessor):
+class RegexLogitsProcessor(BaseGuidedLogitsProcessor):
 
     def __init__(self, regex_string: str, tokenizer: PreTrainedTokenizerBase):
         """Compile the FSM that drives the regex-structured generation.
@@ -120,10 +139,12 @@ class RegexLogitsProcessor(BaseLogitsProcessor):
 
 class JSONLogitsProcessor(RegexLogitsProcessor):
 
-    def __init__(self,
-                 schema: Union[str, Dict, BaseModel],
-                 tokenizer: PreTrainedTokenizerBase,
-                 whitespace_pattern: Optional[str] = None):
+    def __init__(
+        self,
+        schema: Union[str, Dict, BaseModel],
+        tokenizer: PreTrainedTokenizerBase,
+        whitespace_pattern: Optional[str] = None,
+    ):
         """Compile the FSM that drives the JSON-guided generation.
 
         Parameters
@@ -154,7 +175,7 @@ class JSONLogitsProcessor(RegexLogitsProcessor):
         super().__init__(regex_string, tokenizer)
 
 
-class CFGLogitsProcessor(BaseLogitsProcessor):
+class CFGLogitsProcessor(BaseGuidedLogitsProcessor):
 
     def __init__(self, cfg: str, tokenizer: PreTrainedTokenizerBase):
         """Compile the FSM that drives the context free grammar generation.
@@ -170,3 +191,11 @@ class CFGLogitsProcessor(BaseLogitsProcessor):
         tokenizer = self.adapt_tokenizer(tokenizer)
         fsm = CFGFSM(cfg, tokenizer)
         self.fsm = fsm
+
+    def __deepcopy__(self, memo):
+        logits_processor = self.__class__(
+            self.fsm.cfg_string, memo,
+            self.fsm.tokenizer, memo,
+        )
+        logits_processor.fsm = self.fsm.copy()
+        return logits_processor
