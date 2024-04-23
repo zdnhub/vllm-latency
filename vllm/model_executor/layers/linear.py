@@ -17,12 +17,14 @@ from vllm.model_executor.utils import set_weight_attrs
 logger = init_logger(__name__)
 
 
-def adjust_marlin_shard(param, shard_size, shard_offset):
+def adjust_shard(param, shard_size, shard_offset):
     marlin_tile_size = getattr(param, "marlin_tile_size", None)
-    if marlin_tile_size is None:
-        return shard_size, shard_offset
-
-    return shard_size * marlin_tile_size, shard_offset * marlin_tile_size
+    awq_interleave = getattr(param, "awq_interleave", None)
+    if marlin_tile_size is not None:
+        return shard_size * marlin_tile_size, shard_offset * marlin_tile_size
+    elif awq_interleave is not None:
+        return shard_size // awq_interleave, shard_offset // awq_interleave
+    return shard_size, shard_offset
 
 
 class LinearMethodBase(ABC):
@@ -295,10 +297,10 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
                     shard_size = shard_size // param.pack_factor
                     shard_offset = shard_offset // param.pack_factor
 
-                    # If marlin, we need to adjust the offset and size to
-                    # account for the tiling.
-                    shard_size, shard_offset = adjust_marlin_shard(
-                        param, shard_size, shard_offset)
+                # If marlin and awq, we need to adjust the offset and
+                # size to account for the tiling.
+                shard_size, shard_offset = adjust_shard(
+                    param, shard_size, shard_offset)
 
                 loaded_weight_shard = loaded_weight.narrow(
                     output_dim, shard_offset, shard_size)
@@ -318,10 +320,10 @@ class MergedColumnParallelLinear(ColumnParallelLinear):
                 shard_size = shard_size // param.pack_factor
                 shard_offset = shard_offset // param.pack_factor
 
-                # If marlin, we need to adjust the offset and size to
-                # account for the tiling.
-                shard_size, shard_offset = adjust_marlin_shard(
-                    param, shard_size, shard_offset)
+            # If marlin and awq, we need to adjust the offset
+            # and size to account for the tiling.
+            shard_size, shard_offset = adjust_shard(param, shard_size,
+                                                    shard_offset)
 
             param_data = param_data.narrow(output_dim, shard_offset,
                                            shard_size)
@@ -425,10 +427,10 @@ class QKVParallelLinear(ColumnParallelLinear):
                     shard_size = shard_size // param.pack_factor
                     shard_offset = shard_offset // param.pack_factor
 
-                    # If marlin, we need to adjust the offset and size to
-                    # account for the tiling.
-                    shard_size, shard_offset = adjust_marlin_shard(
-                        param, shard_size, shard_offset)
+                # If marlin and awq, we need to adjust the offset
+                # and size to account for the tiling.
+                shard_size, shard_offset = adjust_shard(
+                    param, shard_size, shard_offset)
 
                 loaded_weight_shard = loaded_weight.narrow(
                     output_dim, shard_offset, shard_size)
@@ -455,10 +457,10 @@ class QKVParallelLinear(ColumnParallelLinear):
                 shard_size = shard_size // param.pack_factor
                 shard_offset = shard_offset // param.pack_factor
 
-                # If marlin, we need to adjust the offset and size to
-                # account for the tiling.
-                shard_size, shard_offset = adjust_marlin_shard(
-                    param, shard_size, shard_offset)
+            # If marlin and awq, we need to adjust the offset
+            # and size to account for the tiling.
+            shard_size, shard_offset = adjust_shard(param, shard_size,
+                                                    shard_offset)
 
             param_data = param_data.narrow(output_dim, shard_offset,
                                            shard_size)
