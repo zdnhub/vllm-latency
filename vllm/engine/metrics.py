@@ -112,6 +112,12 @@ class Metrics:
             labelnames=labelnames,
             buckets=[1, 2, 5, 10, 20],
         )
+        self.histogram_max_num_generation_tokens_request = Histogram(
+            name="vllm:request_max_num_generation_tokens",
+            documentation=
+            "Histogram of maximum number of requested generation tokens.",
+            labelnames=labelnames,
+            buckets=build_1_2_5_buckets(max_model_len))
         self.histogram_n_request = Histogram(
             name="vllm:request_params_n",
             documentation="Histogram of the n request parameter.",
@@ -185,11 +191,16 @@ class Stats:
     # Request stats (should have _requests suffix)
     #   Latency
     time_e2e_requests: List[float]
+    time_queue_requests: List[float]
+    time_inference_requests: List[float]
+    time_prefill_requests: List[float]
+    time_decode_requests: List[float]
     #   Metadata
     num_prompt_tokens_requests: List[int]
     num_generation_tokens_requests: List[int]
     best_of_requests: List[int]
     n_requests: List[int]
+    max_num_generation_tokens_requests: List[int]
     finished_reason_requests: List[str]
 
     spec_decode_metrics: Optional["SpecDecodeWorkerMetrics"] = None
@@ -268,6 +279,8 @@ class StatLogger:
         self._log_histogram(
             self.metrics.histogram_num_generation_tokens_request,
             stats.num_generation_tokens_requests)
+        self._log_histogram(self.metrics.histogram_max_num_generation_tokens_request,
+                            stats.max_num_generation_tokens_requests)
         self._log_histogram(self.metrics.histogram_n_request, stats.n_requests)
         self._log_histogram(self.metrics.histogram_best_of_request,
                             stats.best_of_requests)
