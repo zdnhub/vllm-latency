@@ -728,7 +728,10 @@ class LLMEngine:
                     best_of_requests.append(seq_group.sampling_params.best_of)
                     n_requests.append(seq_group.sampling_params.n)
                     max_num_generation_tokens_requests.append(
-                        max(seq.get_output_len() for seq in seq_group.get_seqs())
+                        max(
+                            seq.get_output_len()
+                            for seq in seq_group.get_seqs()
+                        )
                     )
                     finished_reason_requests.extend([
                         SequenceStatus.get_finished_reason(seq.status)
