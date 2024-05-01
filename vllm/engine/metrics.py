@@ -69,6 +69,10 @@ class Metrics:
             name="vllm:generation_tokens_total",
             documentation="Number of generation tokens processed.",
             labelnames=labelnames)
+        self.counter_tokens = Counter(
+            name="vllm:tokens_total",
+            documentation="Number of prefill plus generation tokens processed.",
+            labelnames=labelnames)
         self.histogram_time_to_first_token = Histogram(
             name="vllm:time_to_first_token_seconds",
             documentation="Histogram of time to first token in seconds.",
@@ -209,6 +213,7 @@ class Stats:
     # Iteration stats (should have _iter suffix)
     num_prompt_tokens_iter: int
     num_generation_tokens_iter: int
+    num_tokens_iter: int
     time_to_first_tokens_iter: List[float]
     time_per_output_tokens_iter: List[float]
 
@@ -283,6 +288,7 @@ class StatLogger:
                           stats.num_prompt_tokens_iter)
         self._log_counter(self.metrics.counter_generation_tokens,
                           stats.num_generation_tokens_iter)
+        self._log_counter(self.metrics.counter_tokens, stats.num_tokens_iter)
         self._log_histogram(self.metrics.histogram_time_to_first_token,
                             stats.time_to_first_tokens_iter)
         self._log_histogram(self.metrics.histogram_time_per_output_token,
