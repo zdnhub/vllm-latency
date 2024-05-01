@@ -709,13 +709,10 @@ class LLMEngine:
                         seq_group.metrics.first_scheduled_time -
                         seq_group.metrics.arrival_time)
                     time_prefill_requests.append(
-                        seq_group.metrics.first_token_time - 
-                        seq_group.metrics.first_scheduled_time
-                    )
+                        seq_group.metrics.first_token_time -
+                        seq_group.metrics.first_scheduled_time)
                     time_decode_requests.append(
-                        now - 
-                        seq_group.metrics.first_token_time
-                    )
+                        now - seq_group.metrics.first_token_time)
                     time_inference_requests.append(
                         now - seq_group.metrics.first_scheduled_time)
                     # Metadata
@@ -728,11 +725,8 @@ class LLMEngine:
                     best_of_requests.append(seq_group.sampling_params.best_of)
                     n_requests.append(seq_group.sampling_params.n)
                     max_num_generation_tokens_requests.append(
-                        max(
-                            seq.get_output_len()
-                            for seq in seq_group.get_seqs()
-                        )
-                    )
+                        max(seq.get_output_len()
+                            for seq in seq_group.get_seqs()))
                     finished_reason_requests.extend([
                         SequenceStatus.get_finished_reason(seq.status)
                         for seq in seq_group.get_finished_seqs()
@@ -787,7 +781,8 @@ class LLMEngine:
             num_generation_tokens_requests=num_generation_tokens_requests,
             best_of_requests=best_of_requests,
             n_requests=n_requests,
-            max_num_generation_tokens_requests=max_num_generation_tokens_requests,
+            max_num_generation_tokens_requests=
+            max_num_generation_tokens_requests,
             finished_reason_requests=finished_reason_requests,
         )
 
