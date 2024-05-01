@@ -93,6 +93,30 @@ class Metrics:
             documentation="Histogram of end to end request latency in seconds.",
             labelnames=labelnames,
             buckets=[1.0, 2.5, 5.0, 10.0, 15.0, 20.0, 30.0, 40.0, 50.0, 60.0])
+        self.histogram_queue_time_request = Histogram(
+            name="vllm:request_queue_time_seconds",
+            documentation=
+            "Histogram of time spent in WAITING phase for request.",
+            labelnames=labelnames,
+            buckets=[0.1, 1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 100])
+        self.histogram_inference_time_request = Histogram(
+            name="vllm:request_inference_time_seconds",
+            documentation=
+            "Histogram of time spent in RUNNING phase for request.",
+            labelnames=labelnames,
+            buckets=[0.1, 1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 100])
+        self.histogram_prefill_time_request = Histogram(
+            name="vllm:request_prefill_time_seconds",
+            documentation=
+            "Histogram of time spent in PREFILL phase for request.",
+            labelnames=labelnames,
+            buckets=[0.1, 1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 100])
+        self.histogram_decode_time_request = Histogram(
+            name="vllm:request_decode_time_seconds",
+            documentation=
+            "Histogram of time spent in DECODE phase for request.",
+            labelnames=labelnames,
+            buckets=[0.1, 1.0, 2.5, 5.0, 10.0, 20.0, 50.0, 100])
         #   Metadata
         self.histogram_num_prompt_tokens_request = Histogram(
             name="vllm:request_prompt_tokens",
@@ -268,6 +292,14 @@ class StatLogger:
         # Latency
         self._log_histogram(self.metrics.histogram_e2e_time_request,
                             stats.time_e2e_requests)
+        self._log_histogram(self.metrics.histogram_queue_time_request,
+                            stats.time_queue_requests)
+        self._log_histogram(self.metrics.histogram_inference_time_request,
+                            stats.time_inference_requests)
+        self._log_histogram(self.metrics.histogram_decode_time_request,
+                            stats.time_prefill_requests)
+        self._log_histogram(self.metrics.histogram_prefill_time_request,
+                            stats.time_decode_requests)
         # Metadata
         finished_reason_counter = CollectionsCounter(
             stats.finished_reason_requests)
@@ -279,8 +311,9 @@ class StatLogger:
         self._log_histogram(
             self.metrics.histogram_num_generation_tokens_request,
             stats.num_generation_tokens_requests)
-        self._log_histogram(self.metrics.histogram_max_num_generation_tokens_request,
-                            stats.max_num_generation_tokens_requests)
+        self._log_histogram(
+            self.metrics.histogram_max_num_generation_tokens_request,
+            stats.max_num_generation_tokens_requests)
         self._log_histogram(self.metrics.histogram_n_request, stats.n_requests)
         self._log_histogram(self.metrics.histogram_best_of_request,
                             stats.best_of_requests)
