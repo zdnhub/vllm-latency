@@ -1,7 +1,10 @@
 import asyncio
 import json
+import os
+import shutil
 from dataclasses import dataclass
 from http import HTTPStatus
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 from pydantic import Field
@@ -29,8 +32,11 @@ class LoRAModulePath:
 
 class OpenAIServing:
 
-    def __init__(self, engine: AsyncLLMEngine, served_model_names: List[str],
-                 lora_modules: Optional[List[LoRAModulePath]]):
+    def __init__(self,
+                 engine: AsyncLLMEngine,
+                 served_model_names: List[str],
+                 lora_modules: Optional[List[LoRAModulePath]],
+                 shared_tokenizer: Optional[bool] = True):
         self.engine = engine
         self.served_model_names = served_model_names
         if lora_modules is None:
@@ -47,6 +53,7 @@ class OpenAIServing:
         self.max_model_len = 0
         # Lazy initialized
         self.tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
+        self.shared_tokenizer = shared_tokenizer
 
         try:
             event_loop = asyncio.get_running_loop()
@@ -66,12 +73,42 @@ class OpenAIServing:
         self.max_model_len = engine_model_config.max_model_len
 
         # A separate tokenizer to map token IDs to strings.
-        self.tokenizer = get_tokenizer(
+        self.tokenizer, hf_tokenizer = get_tokenizer(
             engine_model_config.tokenizer,
             tokenizer_mode=engine_model_config.tokenizer_mode,
             tokenizer_revision=engine_model_config.tokenizer_revision,
             trust_remote_code=engine_model_config.trust_remote_code,
             truncation_side="left")
+
+        # tokenizer json required to be informed
+        if self.shared_tokenizer:
+            self.tokenizer_jsons = self._get_tokenizer_jsons(hf_tokenizer)
+
+    def _get_tokenizer_jsons(self, hf_tokenizer) -> Dict[str, Dict]:
+        """Get tokenizer jsons been used"""
+        CURRENT_DIR = os.path.dirname(__file__)
+        EPHIMERAL_FOLDER_NAME = "tmp_tokenizer"
+        TOKENIZER_EPHIMERAL_PATH = Path(
+            os.path.join(CURRENT_DIR, EPHIMERAL_FOLDER_NAME))
+
+        # save tokenizer files in ephimeral folder
+        hf_tokenizer.save_pretrained(TOKENIZER_EPHIMERAL_PATH.absolute())
+        tmp_list = [i for i in TOKENIZER_EPHIMERAL_PATH.glob("*.json")]
+
+        # populate tokenizer json
+        tokenizer_jsons = {}
+        for json_path in tmp_list:
+            with open(json_path) as json_file:
+                filename = json_path.stem
+                tokenizer_jsons[filename] = json.load(json_file)
+        try:
+            shutil.rmtree(TOKENIZER_EPHIMERAL_PATH)
+        except OSError as e:
+            raise RuntimeError(
+                f"Error removing '{TOKENIZER_EPHIMERAL_PATH.name}' dir: {e}"
+            ) from e
+
+        return tokenizer_jsons
 
     async def show_available_models(self) -> ModelList:
         """Show available models. Right now we only have one model."""
