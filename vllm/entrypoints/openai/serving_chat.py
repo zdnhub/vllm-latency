@@ -382,11 +382,13 @@ class OpenAIServingChat(OpenAIServing):
                 tokenizer.chat_template = codecs.decode(
                     chat_template, "unicode_escape")
 
+            logger_data = {"template": self.tokenizer.chat_template}
             logger.info("Using supplied chat template:\n%s",
-                        tokenizer.chat_template)
+                        tokenizer.chat_template, extra=logger_data)
         elif tokenizer.chat_template is not None:
+            logger_data = {"template": self.tokenizer.chat_template}
             logger.info("Using default chat template:\n%s",
-                        tokenizer.chat_template)
+                        tokenizer.chat_template, extra=logger_data)
         else:
             logger.warning(
                 "No chat template provided. Chat API will not work.")

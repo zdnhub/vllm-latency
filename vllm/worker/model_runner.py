@@ -171,8 +171,11 @@ class ModelRunner:
             )
 
         self.model_memory_usage = m.consumed_memory
+        logger_data = {
+            "model_memory_usage": f"{self.model_memory_usage / float(2**30):.4f}"
+        }
         logger.info("Loading model weights took %.4f GB",
-                    self.model_memory_usage / float(2**30))
+                    self.model_memory_usage / float(2**30), extra=logger_data)
 
         if self.lora_config:
             assert hasattr(self.model, "supported_lora_modules"
@@ -1014,7 +1017,9 @@ class ModelRunner:
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
         # This usually takes < 10 seconds.
-        logger.info("Graph capturing finished in %.0f secs.", elapsed_time)
+        logger_data = {"elapsed_time": elapsed_time}
+        logger.info("Graph capturing finished in %.0f secs.", elapsed_time, 
+                    extra=logger_data)
 
     def __del__(self) -> None:
         # Delete the CUDA graphs before deleting the pynccl communicator.

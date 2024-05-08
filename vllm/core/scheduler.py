@@ -644,10 +644,14 @@ class Scheduler:
                 assert num_new_tokens == num_prompt_tokens
 
             if num_new_tokens > self.prompt_limit:
+                logger_data = {
+                    "num_new_tokens": num_new_tokens,
+                    "prompt_limit": self.prompt_limit
+                }
                 logger.warning(
                     "Input prompt (%d tokens) is too long"
                     " and exceeds limit of %d", num_new_tokens,
-                    self.prompt_limit)
+                    self.prompt_limit, extra=logger_data)
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
                 ignored_seq_groups.append(seq_group)
@@ -659,10 +663,13 @@ class Scheduler:
             if can_allocate == AllocStatus.LATER:
                 break
             elif can_allocate == AllocStatus.NEVER:
+                logger_data = {
+                    "num_new_tokens": num_new_tokens,
+                }
                 logger.warning(
                     "Input prompt (%d tokens) is too long"
                     " and exceeds the capacity of block_manager",
-                    num_new_tokens)
+                    num_new_tokens, extra=logger_data)
                 for seq in waiting_seqs:
                     seq.status = SequenceStatus.FINISHED_IGNORED
                 ignored_seq_groups.append(seq_group)

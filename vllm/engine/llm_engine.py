@@ -97,6 +97,30 @@ class LLMEngine:
         log_stats: bool,
         usage_context: UsageContext = UsageContext.ENGINE_CONTEXT,
     ) -> None:
+        logger_data = {
+            "vllm_version": vllm.__version__,
+            "model": model_config.model,
+            "speculative_config": speculative_config,
+            "tokenizer": model_config.tokenizer,
+            "skip_tokenizer_init": model_config.skip_tokenizer_init,
+            "tokenizer_mode": model_config.tokenizer_mode,
+            "revision": model_config.revision,
+            "tokenizer_revision": model_config.tokenizer_revision,
+            "trust_remote_code": model_config.trust_remote_code,
+            "dtype": model_config.dtype,
+            "max_seq_len": model_config.max_model_len,
+            "download_dir": load_config.download_dir,
+            "load_format": load_config.load_format,
+            "tensor_parallel_size": parallel_config.tensor_parallel_size,
+            "disable_custom_all_reduce": parallel_config.disable_custom_all_reduce,
+            "quantization": model_config.quantization,
+            "enforce_eager": model_config.enforce_eager,
+            "kv_cache_dtype": cache_config.cache_dtype,
+            "quantization_param_path": model_config.quantization_param_path,
+            "device_config": device_config.device,
+            "decoding_config": decoding_config,
+            "seed": model_config.seed,
+        }
         logger.info(
             "Initializing an LLM engine (v%s) with config: "
             "model=%r, speculative_config=%r, tokenizer=%r, "
@@ -130,6 +154,7 @@ class LLMEngine:
             decoding_config,
             model_config.seed,
             model_config.served_model_name,
+            extra=logger_data
         )
         # TODO(woosuk): Print more configs in debug mode.
 
@@ -250,10 +275,15 @@ class LLMEngine:
 
         if self.cache_config.num_gpu_blocks_override is not None:
             num_gpu_blocks_override = self.cache_config.num_gpu_blocks_override
+
+            logger_data = {
+                "num_gpu_blocks": num_gpu_blocks,
+                "num_gpu_blocks_override": num_gpu_blocks_override,
+            }
             logger.info(
                 "Overriding num_gpu_blocks=%d with "
                 "num_gpu_blocks_override=%d", num_gpu_blocks,
-                num_gpu_blocks_override)
+                num_gpu_blocks_override, extra=logger_data)
             num_gpu_blocks = num_gpu_blocks_override
 
         self.cache_config.num_gpu_blocks = num_gpu_blocks

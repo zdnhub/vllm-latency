@@ -40,7 +40,8 @@ def set_pynccl_stream(stream: torch.cuda.Stream):
 def init_process_group(group: Optional[ProcessGroup] = None) -> None:
     assert not is_initialized()
     global comm
-    logger.info("vLLM is using nccl==%s", ncclGetVersion())
+    logger_data = {"nccl": ncclGetVersion()}
+    logger.info("vLLM is using nccl==%s", ncclGetVersion(), extra=logger_data)
     comm = NCCLCommunicator(group=group)
 
 

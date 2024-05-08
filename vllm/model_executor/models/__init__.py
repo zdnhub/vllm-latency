@@ -90,9 +90,11 @@ class ModelRegistry:
                     f"Model architecture {model_arch} is not supported by "
                     "ROCm for now.")
             if model_arch in _ROCM_PARTIALLY_SUPPORTED_MODELS:
+                logger_data = {"model_arch": model_arch}
                 logger.warning(
                     "Model architecture %s is partially supported by ROCm: %s",
-                    model_arch, _ROCM_PARTIALLY_SUPPORTED_MODELS[model_arch])
+                    model_arch, _ROCM_PARTIALLY_SUPPORTED_MODELS[model_arch], 
+                    extra=logger_data)
 
         module_name, model_cls_name = _MODELS[model_arch]
         module = importlib.import_module(
@@ -106,10 +108,12 @@ class ModelRegistry:
     @staticmethod
     def register_model(model_arch: str, model_cls: Type[nn.Module]):
         if model_arch in _MODELS:
+            logger_data = {"model_arch": model_arch, "class": model_cls.__name__}
             logger.warning(
                 "Model architecture %s is already registered, and will be "
                 "overwritten by the new model class %s.", model_arch,
-                model_cls.__name__)
+                model_cls.__name__, extra=logger_data)
+
         global _OOT_MODELS
         _OOT_MODELS[model_arch] = model_cls
 

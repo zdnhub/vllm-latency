@@ -71,11 +71,12 @@ class DbrxAttentionConfig(PretrainedConfig):
             and hasattr(cls, "model_type")
             and config_dict["model_type"] != cls.model_type
         ):
+            logger_data = {"model_type": config_dict['model_type']}
             logger.warning(
                 "You are using a model of type %s to instantiate a model of "
                 "type %s. This is not supported for all configurations of "
                 "models and can yield errors.",
-                config_dict["model_type"], cls.model_type)
+                config_dict["model_type"], cls.model_type, extra=logger_data)
 
         return cls.from_dict(config_dict, **kwargs)
 
@@ -151,10 +152,12 @@ class DbrxFFNConfig(PretrainedConfig):
             and hasattr(cls, "model_type")
             and config_dict["model_type"] != cls.model_type
         ):
+            logger_data = {"model_type": config_dict['model_type']}
             logger.warning(
                 "You are using a model of type %s to instantiate a model of "
                 "type %s. This is not supported for all "
-                "configurations of models and can yield errors.", config_dict["model_type"], cls.model_type)
+                "configurations of models and can yield errors.", config_dict["model_type"], cls.model_type,
+                extra=logger_data)
 
         return cls.from_dict(config_dict, **kwargs)
 
