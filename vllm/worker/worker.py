@@ -14,12 +14,16 @@ from vllm.distributed import (broadcast_tensor_dict,
                               init_distributed_environment)
 from vllm.distributed.device_communicators.custom_all_reduce import (
     init_custom_ar)
+from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
 from vllm.model_executor import set_random_seed
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
+from vllm.utils import CudaMemoryProfiler
 from vllm.worker.cache_engine import CacheEngine
 from vllm.worker.model_runner import ModelRunner
 from vllm.worker.worker_base import WorkerBase
+
+logger = init_logger(__name__)
 
 
 class Worker(WorkerBase):
@@ -180,13 +184,25 @@ class Worker(WorkerBase):
 
     def _init_cache_engine(self):
         assert self.cache_config.num_gpu_blocks is not None
-        self.cache_engine = CacheEngine(self.cache_config, self.model_config,
-                                        self.parallel_config)
+        with CudaMemoryProfiler() as m:
+            self.cache_engine = CacheEngine(self.cache_config,
+                                            self.model_config,
+                                            self.parallel_config)
+        mem_usage = m.consumed_memory
+        unit, scale = "GB", float(2**30)
+        logger.info("GPU KV cache reserves %.4f %s GPU memory.",
+                    mem_usage / scale, unit)
         self.gpu_cache = self.cache_engine.gpu_cache
 
     def _warm_up_model(self) -> None:
         if not self.model_config.enforce_eager:
-            self.model_runner.capture_model(self.gpu_cache)
+            with CudaMemoryProfiler() as m:
+                self.model_runner.capture_model(self.gpu_cache)
+            mem_usage = m.consumed_memory
+            unit, scale = "GB", float(2**30)
+            logger.info("Capturing cuda graph reserves %.4f %s GPU memory.",
+                        mem_usage / scale, unit)
+
         # Reset the seed to ensure that the random state is not affected by
         # the model initialization and profiling.
         set_random_seed(self.model_config.seed)
@@ -326,9 +342,12 @@ def _check_if_gpu_supports_dtype(torch_dtype: torch.dtype):
 def raise_if_cache_size_invalid(num_gpu_blocks, block_size,
                                 max_model_len) -> None:
     if num_gpu_blocks <= 0:
-        raise ValueError("No available memory for the cache blocks. "
-                         "Try increasing `gpu_memory_utilization` when "
-                         "initializing the engine.")
+        raise ValueError(
+            "No available memory for the cache blocks. vLLM needs {} more GPU "
+            "blocks to allocate. Try increasing `gpu_memory_utilization` when "
+            "initializing the engine. Or increase `tensor_parallel_size`, which"
+            "shards model weights across GPUs. It gives more memory to "
+            "allocate kv cache blocks per GPU.".format(-num_gpu_blocks))
     max_seq_len = block_size * num_gpu_blocks
     if max_model_len > max_seq_len:
         raise ValueError(
