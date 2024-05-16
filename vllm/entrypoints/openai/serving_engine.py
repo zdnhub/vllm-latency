@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Dict, List, Optional, Tuple, Union
+import os
 
 from pydantic import Field
 from typing_extensions import Annotated
@@ -148,6 +149,8 @@ class OpenAIServing:
             return None
         if request.model in [lora.lora_name for lora in self.lora_requests]:
             return None
+        elif request.lora_request and os.path.exists(request.lora_request.get("lora_local_path")):
+            return None
         return self.create_error_response(
             message=f"The model `{request.model}` does not exist.",
             err_type="NotFoundError",
@@ -161,6 +164,15 @@ class OpenAIServing:
         for lora in self.lora_requests:
             if request.model == lora.lora_name:
                 return lora
+
+        if request.lora_request and os.path.exists(request.lora_request.get("lora_local_path")):
+            new_lora = LoRARequest(
+                lora_name=request.model,
+                lora_local_path=request.lora_request.get("lora_local_path")
+            )
+            self.lora_requests.append(new_lora)
+            return new_lora
+
         # if _check_model has been called earlier, this will be unreachable
         raise ValueError(f"The model `{request.model}` does not exist.")
 

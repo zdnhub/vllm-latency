@@ -12,6 +12,7 @@ from typing_extensions import Annotated, Required, TypedDict
 from vllm.pooling_params import PoolingParams
 from vllm.sampling_params import SamplingParams
 from vllm.utils import random_uuid
+from vllm.lora.request import LoRARequest
 
 
 class CustomChatCompletionContentPartParam(TypedDict, total=False):
@@ -177,6 +178,8 @@ class ChatCompletionRequest(OpenAIBaseModel):
         description=(
             "If specified, the output will follow the context free grammar."),
     )
+    lora_request: Optional[dict] = Field(default_factory=dict)
+
     guided_decoding_backend: Optional[str] = Field(
         default=None,
         description=(
@@ -190,6 +193,11 @@ class ChatCompletionRequest(OpenAIBaseModel):
             "for guided json decoding."))
 
     # doc: end-chat-completion-extra-params
+
+    def to_lora_params(self) -> Union[LoRARequest, None]:
+        if not self.lora_request:
+            return None
+        return LoRARequest(**self.lora_request)
 
     def to_sampling_params(self) -> SamplingParams:
         if self.logprobs and not self.top_logprobs:
@@ -323,6 +331,7 @@ class CompletionRequest(OpenAIBaseModel):
         description=(
             "If specified, the output will follow the context free grammar."),
     )
+    lora_request: Optional[dict] = Field(default_factory=dict)
     guided_decoding_backend: Optional[str] = Field(
         default=None,
         description=(
@@ -336,6 +345,11 @@ class CompletionRequest(OpenAIBaseModel):
             "for guided json decoding."))
 
     # doc: end-completion-extra-params
+
+    def to_lora_params(self) -> Union[LoRARequest, None]:
+        if not self.lora_request:
+            return None
+        return LoRARequest(**self.lora_request)
 
     def to_sampling_params(self):
         echo_without_generation = self.echo and self.max_tokens == 0
