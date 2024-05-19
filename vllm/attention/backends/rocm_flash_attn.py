@@ -392,6 +392,7 @@ class ROCmFlashAttentionImpl(AttentionImpl):
                 self.num_kv_heads,
                 self.scale,
                 self.alibi_slopes,
+                self.sliding_window[0],
                 kv_scale,
             )
 
