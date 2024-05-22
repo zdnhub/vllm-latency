@@ -7,6 +7,8 @@
 #include "cuda_compat.h"
 #include "dispatch_utils.h"
 
+#include "fp8_gemm_kernels.h"
+
 namespace vllm {
 
 __device__ __forceinline__ float atomicMaxFloat(float* addr, float value) {
@@ -45,7 +47,7 @@ __global__ void segmented_max_reduction(
   scalar_t tmp = 0.0;
   while (i < num_elems) {
     float x = static_cast<float>(input[i]);
-    tmp = max(tmp, fabs(x));
+    tmp = fmax(tmp, fabs(x));
     i += blockDim.x * gridDim.x;
   }
   cache[threadIdx.x] = tmp;
@@ -131,5 +133,37 @@ void dynamic_scaled_fp8_quant(
         scale.data_ptr<float>(),
         num_elems);
       });
+}
+
+void fp8_scaled_gemm(torch::Tensor& out, torch::Tensor& input, torch::Tensor& weights, torch::Tensor& workspace) {
+  Gemm gemm;
+
+  int m = input.size(0);
+  int n = weights.size(1);
+  int k = weights.size(0);
+  int l = 1;
+
+  StrideA stride_A = cutlass::make_cute_packed_stride(StrideA{}, cute::make_shape(m, k, l));
+  StrideB stride_B = cutlass::make_cute_packed_stride(StrideB{}, cute::make_shape(n, k, l));
+  StrideC stride_C = cutlass::make_cute_packed_stride(StrideC{}, cute::make_shape(m, n, l));
+  StrideD stride_D = cutlass::make_cute_packed_stride(StrideD{}, cute::make_shape(m, n, l));
+
+  typename Gemm::Arguments arguments{
+    cutlass::gemm::GemmUniversalMode::kGemm,
+    {m, n, k, l},
+    {reinterpret_cast<cutlass::float_e4m3_t*>(input.data_ptr<c10::Float8_e4m3fn>()), stride_A,
+     reinterpret_cast<cutlass::float_e4m3_t*>(weights.data_ptr<c10::Float8_e4m3fn>()), stride_B},
+    {
+      {1.0f, 0.0f}, // epilogue.thread
+      reinterpret_cast<cutlass::half_t*>(out.data_ptr<c10::Half>()), stride_C,
+      reinterpret_cast<cutlass::half_t*>(out.data_ptr<c10::Half>()), stride_D
+    }
+  };
+
+  size_t workspace_size = Gemm::get_workspace_size(arguments);
+  TORCH_CHECK(workspace.numel() >= workspace_size);
+  TORCH_CHECK(gemm.can_implement(arguments) == cutlass::Status::kSuccess);
+  TORCH_CHECK(gemm.initialize(arguments, workspace.data_ptr<uint8_t>()) == cutlass::Status::kSuccess);
+  TORCH_CHECK(gemm.run() == cutlass::Status::kSuccess);
 }
 
