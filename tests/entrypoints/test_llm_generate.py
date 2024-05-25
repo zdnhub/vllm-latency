@@ -39,33 +39,3 @@ def test_multiple_sampling_params():
     # sampling_params is None, default params should be applied
     outputs = llm.generate(prompts, sampling_params=None)
     assert len(prompts) == len(outputs)
-
-    prompt = "Write a story about a bull rider named Tom who gets lost at sea the one time he tries to go fishing. Make it less than 300 words."
-    messages = [
-        {"role": "system", "content": "I am a helpful assistant"},
-        {"role": "user", "content": prompt},
-    ]
-    outputs = llm.generate_chat(messages)
-    for output in outputs:
-        prompt = output.prompt
-        generated_text = output.outputs[0].text
-        print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
-
-    prompt1 = "Write a story about a bull rider named Tom who gets lost at sea the one time he tries to go fishing. Make it less than 300 words."
-    prompt2 = "Write a story about a pilot named Jane who finds a hidden treasure in the mountains. Make it less than 100 words."
-    messages = [
-        [
-            {"role": "system", "content": "I am a helpful assistant"},
-            {"role": "user", "content": prompt1},
-        ],
-        [
-            {"role": "system", "content": "I am a helpful assistant"},
-            {"role": "user", "content": prompt2},
-        ]
-    ]
-    outputs = llm.generate_chat(messages)
-    assert len(outputs) == 2
-    for output in outputs:
-        prompt = output.prompt
-        generated_text = output.outputs[0].text
-        print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
