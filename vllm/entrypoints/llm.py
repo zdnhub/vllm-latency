@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 
 import torch
 from tqdm import tqdm
@@ -202,6 +202,35 @@ class LLM:
                 if multi_modal_data else None,
             )
         return self._run_engine(use_tqdm)
+    
+    def generate_chat(
+            self,
+            messages: Optional[Union[List[Dict[str, str]], List[List[Dict[str, str]]]]] = None,
+            sampling_params: Optional[Union[SamplingParams,
+                                            List[SamplingParams]]] = None,
+            use_tqdm: bool = True,
+            lora_request: Optional[LoRARequest] = None,
+            multi_modal_data: Optional[MultiModalData] = None,
+            ) -> List[RequestOutput]:
+
+        # Convert messages to prompts
+        tokenizer = self.get_tokenizer()
+
+        if all(isinstance(i, list) for i in messages):
+            input = [tokenizer.apply_chat_template(message, 
+                                               tokenize=False, 
+                                               add_generation_template=True) for message in messages]
+            
+        else:
+            input = tokenizer.apply_chat_template(messages, 
+                                                tokenize=False, 
+                                                add_generation_template=True)
+        return self.generate(input, 
+                             sampling_params, 
+                             use_tqdm=use_tqdm, 
+                             lora_request=lora_request, 
+                             multi_modal_data=multi_modal_data
+                        )
 
     def _add_request(
         self,
