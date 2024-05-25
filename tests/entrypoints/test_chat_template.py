@@ -1,5 +1,3 @@
-import pytest
-
 from vllm import LLM, SamplingParams
 
 def test_generate_chat():
