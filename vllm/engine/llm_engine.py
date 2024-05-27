@@ -767,7 +767,6 @@ class LLMEngine:
         num_generation_tokens_requests: List[int] = []
         best_of_requests: List[int] = []
         n_requests: List[int] = []
-        max_num_generation_tokens_requests = []
         finished_reason_requests: List[str] = []
 
         # NOTE: This loop assumes prefill seq_groups are before
@@ -832,10 +831,6 @@ class LLMEngine:
                         seq.get_output_len()
                         for seq in seq_group.get_finished_seqs()
                     ])
-
-                    max_num_generation_tokens_requests.append(
-                        max(seq.get_output_len()
-                            for seq in seq_group.get_seqs()))
                     if seq_group.sampling_params is not None:
                         best_of_requests.append(
                             seq_group.sampling_params.best_of)
@@ -896,8 +891,6 @@ class LLMEngine:
             num_generation_tokens_requests=num_generation_tokens_requests,
             best_of_requests=best_of_requests,
             n_requests=n_requests,
-            max_num_generation_tokens_requests=
-            max_num_generation_tokens_requests,
             finished_reason_requests=finished_reason_requests,
         )
 
