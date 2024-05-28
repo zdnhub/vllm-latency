@@ -203,7 +203,7 @@ class Stats:
     """Created by LLMEngine for use by StatLogger."""
     now: float
 
-    # System stats (should have _sys suffix)
+    # System stats (_sys suffix)
     #   Scheduler State
     num_running_sys: int
     num_waiting_sys: int
@@ -212,7 +212,7 @@ class Stats:
     gpu_cache_usage_sys: float
     cpu_cache_usage_sys: float
 
-    # Iteration stats (should have _iter suffix)
+    # Iteration stats (_iter suffix)
     num_prompt_tokens_iter: int
     num_generation_tokens_iter: int
     num_tokens_iter: int
@@ -220,7 +220,7 @@ class Stats:
     time_per_output_tokens_iter: List[float]
     num_preemption_iter: int
 
-    # Request stats (should have _requests suffix)
+    # Request stats (_requests suffix)
     #   Latency
     time_e2e_requests: List[float]
     time_queue_requests: List[float]
