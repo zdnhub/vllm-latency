@@ -177,6 +177,14 @@ class ChatCompletionRequest(OpenAIBaseModel):
         description=(
             "If specified, the output will follow the context free grammar."),
     )
+    guided_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "If specified, the output will be restricted to valid Python types. "
+            "Currently supported types: `int`, `float`, `bool`, `datetime.date`, "
+            "`datetime.time`, `datetime.datetime`, and [custom types](https://outlines-dev.github.io/outlines/reference/types/)."
+            ),
+    )
     guided_decoding_backend: Optional[str] = Field(
         default=None,
         description=(
@@ -243,12 +251,14 @@ class ChatCompletionRequest(OpenAIBaseModel):
         guide_count = sum([
             "guided_json" in data and data["guided_json"] is not None,
             "guided_regex" in data and data["guided_regex"] is not None,
-            "guided_choice" in data and data["guided_choice"] is not None
+            "guided_choice" in data and data["guided_choice"] is not None,
+            "guided_type" in data and data["guided_type"] is not None,
+            "guided_grammar" in data and data["guided_grammar"] is not None,
         ])
         if guide_count > 1:
             raise ValueError(
                 "You can only use one kind of guided decoding "
-                "('guided_json', 'guided_regex' or 'guided_choice').")
+                "('guided_json', 'guided_regex', 'guided_choice', 'guided_type', 'guided_grammar').")
         return data
 
 
@@ -323,6 +333,14 @@ class CompletionRequest(OpenAIBaseModel):
         description=(
             "If specified, the output will follow the context free grammar."),
     )
+    guided_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "If specified, the output will be restricted to valid Python types. "
+            "Currently supported types: `int`, `float`, `bool`, `datetime.date`, "
+            "`datetime.time`, `datetime.datetime`, and [custom types](https://outlines-dev.github.io/outlines/reference/types/)."
+            ),
+    )
     guided_decoding_backend: Optional[str] = Field(
         default=None,
         description=(
@@ -389,12 +407,14 @@ class CompletionRequest(OpenAIBaseModel):
         guide_count = sum([
             "guided_json" in data and data["guided_json"] is not None,
             "guided_regex" in data and data["guided_regex"] is not None,
-            "guided_choice" in data and data["guided_choice"] is not None
+            "guided_choice" in data and data["guided_choice"] is not None,
+            "guided_type" in data and data["guided_type"] is not None,
+            "guided_grammar" in data and data["guided_grammar"] is not None
         ])
         if guide_count > 1:
             raise ValueError(
                 "You can only use one kind of guided decoding "
-                "('guided_json', 'guided_regex' or 'guided_choice').")
+                "('guided_json', 'guided_regex', 'guided_choice', 'guided_type', or 'guided_grammar').")
         return data
 
 
