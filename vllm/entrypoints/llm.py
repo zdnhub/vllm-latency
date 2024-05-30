@@ -189,17 +189,20 @@ class LLM:
 
         return self._run_engine(use_tqdm)
 
-    def generate_chat(
+    def chat(
         self,
-        messages: Union[List[Dict[str, str]], List[List[Dict[str, str]]]],
+        messages: Union[str, List[str], List[Dict[str, str]],
+                        List[List[Dict[str, str]]]],
         sampling_params: Optional[Union[SamplingParams,
                                         List[SamplingParams]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[LoRARequest] = None,
         multi_modal_data: Optional[MultiModalData] = None,
+        global_system_prompt: Optional[str] = None,
+        chat_template: Optional[str] = None,
     ) -> List[RequestOutput]:
         """
-        Generates chat responses for the input messages.
+        Generates responses for chat messages.
 
         Converts the messages to prompts using the tokenizer and calls 
         the `generate` method to generate the responses.
@@ -216,6 +219,10 @@ class LLM:
             use_tqdm: Whether to use tqdm to display the progress bar.
             lora_request: LoRA request to use for generation, if any.
             multi_modal_data: Multi modal data.
+            global_system_prompt: The initial system prompt used for each 
+            single turn conversation.
+            chat_template: The template to use for structuring the chat.
+              If not provided, the model's default chat template will be used.
 
         Returns:
             A list of `RequestOutput` objects containing the generated 
@@ -223,19 +230,49 @@ class LLM:
         """
 
         tokenizer = self.get_tokenizer()
+        default_system_prompt = "You are a helpful assistant."
 
-        if all(isinstance(i, list) for i in messages):
+        if isinstance(messages, str):
+            # Single turn conversation
+            messages = [{
+                'role':
+                'system',
+                'content':
+                global_system_prompt or default_system_prompt
+            }, {
+                'role': 'user',
+                'content': messages
+            }]
+
+        elif isinstance(messages[0], str):
+            # Multiple single turn conversations
+            messages = [[{
+                'role':
+                'system',
+                'content':
+                global_system_prompt or default_system_prompt
+            }, {
+                'role': 'user',
+                'content': str(message)
+            }] for message in messages]
+
+        if isinstance(messages[0], list):
             # Convert messages to prompts
             prompts = [
                 tokenizer.apply_chat_template(message,
                                               tokenize=False,
-                                              add_generation_template=True)
+                                              add_generation_template=True,
+                                              chat_template=chat_template)
                 for message in messages
             ]
 
         else:
             prompts = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_template=True)
+                messages,
+                tokenize=False,
+                add_generation_template=True,
+                chat_template=chat_template)
+
         return self.generate(prompts,
                              sampling_params,
                              use_tqdm=use_tqdm,

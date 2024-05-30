@@ -1,6 +1,7 @@
 from vllm import LLM, SamplingParams
 
-def test_generate_chat():
+
+def test_chat():
 
     llm = LLM(model="facebook/opt-125m")
 
@@ -15,23 +16,21 @@ def test_generate_chat():
             "content": prompt1
         },
     ]
-    outputs = llm.generate_chat(messages)
+    outputs = llm.chat(messages)
     assert len(outputs) == 1
 
     prompt2 = "Describe Bangkok in 150 words."
-    messages = [messages] + [
-                [
-                    {
-                        "role": "system",
-                        "content": "You are a helpful assistant"
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt2
-                    },
-                ]
-    ]
-    outputs = llm.generate_chat(messages)
+    messages = [messages] + [[
+        {
+            "role": "system",
+            "content": "You are a helpful assistant"
+        },
+        {
+            "role": "user",
+            "content": prompt2
+        },
+    ]]
+    outputs = llm.chat(messages)
     assert len(outputs) == len(messages)
 
     sampling_params = [
@@ -39,5 +38,5 @@ def test_generate_chat():
         SamplingParams(temperature=0.3, top_p=0.95),
     ]
 
-    outputs = llm.generate_chat(messages, sampling_params=sampling_params)
+    outputs = llm.chat(messages, sampling_params=sampling_params)
     assert len(outputs) == len(messages)
