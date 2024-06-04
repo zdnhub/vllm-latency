@@ -197,7 +197,6 @@ class LLM:
                                         List[SamplingParams]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[LoRARequest] = None,
-        multi_modal_data: Optional[MultiModalData] = None,
         global_system_prompt: Optional[str] = None,
         chat_template: Optional[str] = None,
     ) -> List[RequestOutput]:
@@ -218,7 +217,6 @@ class LLM:
                 prompts and it is paired one by one with the prompt.
             use_tqdm: Whether to use tqdm to display the progress bar.
             lora_request: LoRA request to use for generation, if any.
-            multi_modal_data: Multi modal data.
             global_system_prompt: The initial system prompt used for each 
             single turn conversation.
             chat_template: The template to use for structuring the chat.
@@ -276,8 +274,7 @@ class LLM:
         return self.generate(prompts,
                              sampling_params,
                              use_tqdm=use_tqdm,
-                             lora_request=lora_request,
-                             multi_modal_data=multi_modal_data)
+                             lora_request=lora_request)
 
     def encode(
         self,
