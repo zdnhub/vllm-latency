@@ -1,10 +1,7 @@
 from vllm import LLM, SamplingParams
 
-llm = LLM(model="facebook/opt-125m")
+llm = LLM(model="meta-llama/Meta-Llama-3-8B-Instruct")
 sampling_params = SamplingParams(temperature=0.5)
-
-with open('template_falcon_180b.jinja', "r") as f:
-    chat_template = f.read()
 
 
 def print_outputs(outputs):
@@ -25,7 +22,6 @@ outputs = llm.chat(
     message,
     sampling_params=sampling_params,
     use_tqdm=False,
-    chat_template=chat_template,
 )
 print_outputs(outputs)
 
@@ -38,7 +34,6 @@ outputs = llm.chat(
     messages,
     sampling_params=sampling_params,
     use_tqdm=False,
-    chat_template=chat_template,
 )
 print_outputs(outputs)
 
@@ -106,3 +101,16 @@ outputs = llm.chat(
     use_tqdm=False,
 )
 print_outputs(outputs)
+
+# A chat template can be optionally supplied.
+# If not, the model will use its default chat template.
+
+# with open('template_falcon_180b.jinja', "r") as f:
+#     chat_template = f.read()
+
+# outputs = llm.chat(
+#     conversations,
+#     sampling_params=sampling_params,
+#     use_tqdm=False,
+#     chat_template=chat_template,
+# )
