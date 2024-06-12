@@ -676,6 +676,8 @@ class SchedulerConfig:
             swapping. However, when the sequence group has multiple sequences
             (e.g., beam search), recomputation is not currently supported. In
             such a case, we use swapping instead.
+        max_num_batched_logprobs: Maximum number of logprobs to be processed in
+            a single iteration. This should be carefully chosen to avoid OOM.
     """
 
     def __init__(self,
@@ -687,7 +689,8 @@ class SchedulerConfig:
                  delay_factor: float = 0.0,
                  enable_chunked_prefill: bool = False,
                  embedding_mode: Optional[bool] = False,
-                 preemption_mode: Optional[str] = None) -> None:
+                 preemption_mode: Optional[str] = None,
+                 max_num_batched_logprobs: Optional[int] = None) -> None:
         if max_num_batched_tokens is not None:
             self.max_num_batched_tokens = max_num_batched_tokens
         else:
@@ -714,6 +717,9 @@ class SchedulerConfig:
         self.chunked_prefill_enabled = enable_chunked_prefill
         self.embedding_mode = embedding_mode
         self.preemption_mode = preemption_mode
+        self.max_num_batched_logprobs = (
+            max_num_batched_logprobs if max_num_batched_logprobs is not None
+            else min(self.max_num_batched_tokens, 256))
 
         self._verify_args()
 
@@ -733,6 +739,12 @@ class SchedulerConfig:
                 f"max_num_batched_tokens ({self.max_num_batched_tokens}) must "
                 "be greater than or equal to max_num_seqs "
                 f"({self.max_num_seqs}).")
+
+        if self.max_num_batched_logprobs > self.max_num_batched_tokens:
+            raise ValueError(
+                f"max_num_batched_logprobs ({self.max_num_batched_logprobs}) "
+                f"must be less than or equal to max_num_batched_tokens "
+                f"({self.max_num_batched_tokens}).")
 
         if self.num_lookahead_slots < 0:
             raise ValueError(
