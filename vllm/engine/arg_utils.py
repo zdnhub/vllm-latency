@@ -3,7 +3,7 @@ import dataclasses
 import json
 import warnings
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import ClassVar, List, Optional, Tuple, Union
 
 from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
                          EngineConfig, LoadConfig, LoRAConfig, ModelConfig,
@@ -11,7 +11,7 @@ from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
                          SpeculativeConfig, TokenizerPoolConfig,
                          VisionLanguageConfig)
 from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
-from vllm.utils import str_to_int_tuple
+from vllm.utils import deprecate_kwargs, str_to_int_tuple
 
 
 def nullable_str(val: str):
@@ -22,6 +22,8 @@ def nullable_str(val: str):
 
 @dataclass
 class EngineArgs:
+    DEPRECATE_LEGACY: ClassVar[bool] = False
+    """A flag to toggle whether to deprecate the legacy Engine Arguments API."""
     """Arguments for vLLM engine."""
     model: str
     served_model_name: Optional[Union[List[str]]] = None
@@ -51,7 +53,8 @@ class EngineArgs:
     max_num_seqs: int = 256
     max_logprobs: int = 20  # Default value for OpenAI Chat Completions API
     disable_log_stats: bool = False
-    revision: Optional[str] = None
+    revision: Optional[str] = None  # Deprecated
+    weights_revision: Optional[str] = None
     code_revision: Optional[str] = None
     rope_scaling: Optional[dict] = None
     rope_theta: Optional[float] = None
@@ -177,12 +180,21 @@ class EngineArgs:
             action='store_true',
             help='Skip initialization of tokenizer and detokenizer')
         parser.add_argument(
+            '--weights-revision',
+            type=nullable_str,
+            default=None,
+            help='The specific revision to use for the model weights. '
+            'It can be a branch name, a tag name, or a commit id. '
+            'If unspecified, will use the default version.')
+
+        parser.add_argument(
             '--revision',
             type=nullable_str,
             default=None,
             help='The specific model version to use. It can be a branch '
             'name, a tag name, or a commit id. If unspecified, will use '
             'the default version.')
+
         parser.add_argument(
             '--code-revision',
             type=nullable_str,
@@ -613,11 +625,26 @@ class EngineArgs:
 
     @classmethod
     def from_cli_args(cls, args: argparse.Namespace):
-        # Get the list of attributes of this dataclass.
-        attrs = [attr.name for attr in dataclasses.fields(cls)]
-        # Set the attributes from the parsed arguments.
-        engine_args = cls(**{attr: getattr(args, attr) for attr in attrs})
-        return engine_args
+        # Create a dictionary of attribute names and their values from args
+        def get_kwargs_from_args() -> dict:
+            attrs = {
+                attr.name: getattr(args, attr.name, None)
+                for attr in dataclasses.fields(cls)
+            }
+            return attrs
+
+        @deprecate_kwargs("revision",
+                          is_deprecated=lambda: cls.DEPRECATE_LEGACY,
+                          additional_message=
+                          "Please use the '--weights-revision' flag instead.")
+        def set_attributes(kwargs):
+            # Initialize the instance using the kwargs
+            return cls(**kwargs)
+
+        # Extract arguments from the args namespace
+        kwargs = get_kwargs_from_args()
+        # Create the EngineArgs instance using the decorated function
+        return set_attributes(kwargs)
 
     def create_engine_config(self, ) -> EngineConfig:
 
@@ -645,7 +672,8 @@ class EngineArgs:
             trust_remote_code=self.trust_remote_code,
             dtype=self.dtype,
             seed=self.seed,
-            revision=self.revision,
+            weights_revision=self.weights_revision
+            if self.weights_revision else self.revision,
             code_revision=self.code_revision,
             rope_scaling=self.rope_scaling,
             rope_theta=self.rope_theta,
