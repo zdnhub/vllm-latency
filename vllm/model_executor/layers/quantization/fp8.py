@@ -174,7 +174,8 @@ class Fp8LinearMethod(LinearMethodBase):
         qkv_idxs = {"q": 0, "k": 1, "v": 2}
 
         if isinstance(shard_id, int):
-            pass
+            if shard_id not in qkv_idxs.values():
+                raise ValueError(f"Out range shard_id: {shard_id}")
         elif isinstance(shard_id, str):
             if shard_id not in qkv_idxs:
                 raise ValueError(f"Unknown shard_id: {shard_id}")
