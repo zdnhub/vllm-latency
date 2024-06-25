@@ -4,10 +4,13 @@ import math
 import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 import safetensors.torch
 import torch
+from fsspec.implementations.local import LocalFileSystem
+from huggingface_hub import HfFileSystem
 from torch import nn
 
 from vllm.config import LoRAConfig
@@ -23,6 +26,7 @@ from vllm.utils import LRUCache, is_pin_memory_available
 logger = init_logger(__name__)
 
 _GLOBAL_LORA_ID = 0
+HF_ENDPOINT = os.getenv("HF_ENDPOINT", None)
 
 
 @dataclass
@@ -263,7 +267,7 @@ class LoRAModel:
         return cls(lora_model_id, rank, loras, scaling_factor=scaling_factor)
 
     @classmethod
-    def from_local_checkpoint(
+    def from_checkpoint(
         cls,
         lora_dir: str,
         expected_lora_modules: List[str],
@@ -279,7 +283,7 @@ class LoRAModel:
         """Create a LoRAModel from a local checkpoint.
         
         Args:
-            lora_dir: The local path that has lora data.
+            lora_dir: The local_path / repo_id that has lora data.
             expected_lora_modules: Name of modules that are expected to be
                 replaced by lora.
             max_position_embeddings: Max position embedding length. Used to
@@ -293,14 +297,23 @@ class LoRAModel:
         Returns:
             Loaded LoRA Model.
         """
-        lora_config_path = os.path.join(lora_dir, "adapter_config.json")
-        lora_tensor_path = os.path.join(lora_dir, "adapter_model.safetensors")
-        lora_bin_file_path = os.path.join(lora_dir, "adapter_model.bin")
-        new_embeddings_tensor_path = os.path.join(
-            lora_dir, "new_embeddings.safetensors")
-        new_embeddings_bin_file_path = os.path.join(lora_dir,
-                                                    "new_embeddings.bin")
-        with open(lora_config_path) as f:
+        lora_path = Path(lora_dir)
+        # select file system based on the path
+        if lora_path.exists():
+            file_system = LocalFileSystem()
+        else:
+            file_system = HfFileSystem(endpoint=HF_ENDPOINT)
+
+        # Since HfFileSystem and Posix use same path separator, we can use
+        # pathlib.Path to join the path for convenience
+        lora_config_path = lora_path.joinpath("adapter_config.json")
+        lora_tensor_path = lora_path.joinpath("adapter_model.safetensors")
+        lora_bin_file_path = lora_path.joinpath("adapter_model.bin")
+        new_embeddings_tensor_path = lora_path.joinpath(
+            "new_embeddings.safetensors")
+        new_embeddings_bin_file_path = lora_path.joinpath("new_embeddings.bin")
+
+        with file_system.open(lora_config_path) as f:
             config = json.load(f)
         target_modules = config["target_modules"]
         unexpected_modules = []
@@ -318,19 +331,22 @@ class LoRAModel:
                 f" target modules in {expected_lora_modules}"
                 f" but received {unexpected_modules}."
                 f" Please verify that the loaded LoRA module is correct")
-        if os.path.isfile(lora_tensor_path):
-            tensors = safetensors.torch.load_file(lora_tensor_path)
-        elif os.path.isfile(lora_bin_file_path):
-            tensors = torch.load(lora_bin_file_path)
+        if file_system.exists(lora_tensor_path):
+            with file_system.open(lora_tensor_path, "rb") as f:
+                tensors = safetensors.torch.load(f.read())
+        elif file_system.exists(lora_bin_file_path):
+            with file_system.open(lora_bin_file_path, "rb") as f:
+                tensors = torch.load(f)
         else:
             raise ValueError(f"{lora_dir} doesn't contain tensors")
 
         embeddings = None
-        if os.path.isfile(new_embeddings_tensor_path):
-            embeddings = safetensors.torch.load_file(
-                new_embeddings_tensor_path)
-        elif os.path.isfile(new_embeddings_bin_file_path):
-            embeddings = torch.load(new_embeddings_bin_file_path)
+        if file_system.exists(new_embeddings_tensor_path):
+            with file_system.open(new_embeddings_tensor_path, "rb") as f:
+                embeddings = safetensors.torch.load(f.read())
+        elif file_system.isfile(new_embeddings_bin_file_path):
+            with file_system.open(new_embeddings_tensor_path, "rb") as f:
+                embeddings = torch.load(f)
 
         rank = config["r"]
         lora_alpha = config["lora_alpha"]

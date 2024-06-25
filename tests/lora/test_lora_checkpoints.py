@@ -4,6 +4,7 @@ import pytest
 
 from vllm.lora.models import LoRAModel
 from vllm.model_executor.models.baichuan import BaiChuanBaseForCausalLM
+from vllm.model_executor.models.llama import LlamaForCausalLM
 
 lora_lst = ["baichuan7B", "baichuan7B-zero", "chatglm3-6b"]
 
@@ -28,7 +29,7 @@ def test_load_checkpoints(
     if lora_name == "baichuan7B":
         # For the baichuan7B model, load it's LoRA,
         # and the test should pass.
-        LoRAModel.from_local_checkpoint(
+        LoRAModel.from_checkpoint(
             baichuan_lora_files,
             expected_lora_modules,
             lora_model_id=1,
@@ -39,7 +40,7 @@ def test_load_checkpoints(
         #Test that the target_modules contain prefix
         # such as "model.layers.0.self_atten.W_pack", and
         # the test should pass.
-        LoRAModel.from_local_checkpoint(
+        LoRAModel.from_checkpoint(
             baichuan_zero_lora_files,
             expected_lora_modules,
             lora_model_id=1,
@@ -51,10 +52,29 @@ def test_load_checkpoints(
         # and the test should raise the following error.
         expected_error = "Please verify that the loaded LoRA module is correct"  # noqa: E501
         with pytest.raises(ValueError, match=expected_error):
-            LoRAModel.from_local_checkpoint(
+            LoRAModel.from_checkpoint(
                 chatglm3_lora_files,
                 expected_lora_modules,
                 lora_model_id=1,
                 device="cpu",
                 embedding_modules=embedding_modules,
                 embedding_padding_modules=embed_padding_modules)
+
+
+def test_load_remote_checkpoints():
+    supported_lora_modules = LlamaForCausalLM.supported_lora_modules
+    packed_modules_mapping = LlamaForCausalLM.packed_modules_mapping
+    embedding_modules = LlamaForCausalLM.embedding_modules
+    embed_padding_modules = LlamaForCausalLM.embedding_padding_modules
+    expected_lora_modules = []
+    for module in supported_lora_modules:
+        if module in packed_modules_mapping:
+            expected_lora_modules.extend(packed_modules_mapping[module])
+        else:
+            expected_lora_modules.append(module)
+    LoRAModel.from_checkpoint("yard1/llama-2-7b-sql-lora-test",
+                              expected_lora_modules,
+                              lora_model_id=1,
+                              device="cpu",
+                              embedding_modules=embedding_modules,
+                              embedding_padding_modules=embed_padding_modules)
