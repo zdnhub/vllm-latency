@@ -99,6 +99,7 @@ class EngineArgs:
     speculative_disable_by_batch_size: Optional[int] = None
     ngram_prompt_lookup_max: Optional[int] = None
     ngram_prompt_lookup_min: Optional[int] = None
+    draft_tensor_parallel_size: Optional[int] = None
 
     qlora_adapter_name_or_path: Optional[str] = None
 
@@ -567,6 +568,13 @@ class EngineArgs:
             help='Min size of window for ngram prompt lookup in speculative '
             'decoding.')
 
+        parser.add_argument(
+            '--draft-tensor-parallel-size',
+            type=int,
+            default=EngineArgs.draft_tensor_parallel_size,
+            help='Tensor parallel size for the draft model.'
+            ' If not specified, will use target model\'s tensor parallel size')
+
         parser.add_argument('--model-loader-extra-config',
                             type=nullable_str,
                             default=EngineArgs.model_loader_extra_config,
@@ -694,6 +702,7 @@ class EngineArgs:
             use_v2_block_manager=self.use_v2_block_manager,
             ngram_prompt_lookup_max=self.ngram_prompt_lookup_max,
             ngram_prompt_lookup_min=self.ngram_prompt_lookup_min,
+            tensor_parallel_size=self.draft_tensor_parallel_size,
         )
 
         scheduler_config = SchedulerConfig(
