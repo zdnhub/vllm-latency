@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import torch
 from torch import nn
@@ -10,6 +10,9 @@ from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          VisionLanguageConfig)
 from vllm.distributed import broadcast_tensor_dict
 from vllm.logger import init_logger
+from vllm.lora.layers import LoRAMapping
+from vllm.lora.request import LoRARequest
+from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
 from vllm.model_executor import SamplingMetadata
 from vllm.model_executor.model_loader import get_model
 from vllm.multimodal import MULTIMODAL_REGISTRY
@@ -77,6 +80,7 @@ class CPUModelRunner:
 
         # Lazy initialization.
         self.model: nn.Module  # Set after init_Model
+        self.lora_manager: Optional[LRUCacheWorkerLoRAManager] = None
 
     def load_model(self) -> None:
         self.model = get_model(
@@ -89,11 +93,27 @@ class CPUModelRunner:
             scheduler_config=self.scheduler_config,
             cache_config=self.cache_config)
 
+        if self.lora_config:
+            assert hasattr(self.model, "supported_lora_modules"
+                           ) and self.model.supported_lora_modules, (
+                               "Model does not support LoRA")
+            assert hasattr(
+                self.model,
+                "embedding_modules"), "Model does not have embedding_modules"
+            assert hasattr(self.model, "embedding_padding_modules"
+                           ), "Model does not have embedding_padding_modules"
+            self.lora_manager = LRUCacheWorkerLoRAManager(
+                self.scheduler_config.max_num_seqs,
+                self.scheduler_config.max_num_batched_tokens, self.vocab_size,
+                self.lora_config, self.device, self.model.embedding_modules,
+                self.model.embedding_padding_modules)
+            self.model = self.lora_manager.create_lora_manager(self.model)
+
     def _prepare_prompt(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
     ) -> Tuple[torch.Tensor, torch.Tensor, AttentionMetadata, List[int], Dict[
-            str, torch.Tensor]]:
+            str, torch.Tensor], List[int], List[int], Set[LoRARequest]]:
         assert len(seq_group_metadata_list) > 0
         input_tokens: List[int] = []
         input_positions: List[int] = []
@@ -101,6 +121,10 @@ class CPUModelRunner:
         seq_lens: List[int] = []
         multi_modal_kwargs_list: Dict[str,
                                       List[torch.Tensor]] = defaultdict(list)
+
+        lora_index_mapping: List[int] = []
+        lora_prompt_mapping: List[int] = []
+        lora_requests: Set[LoRARequest] = set()
 
         for seq_group_metadata in seq_group_metadata_list:
             assert seq_group_metadata.is_prompt
@@ -120,6 +144,20 @@ class CPUModelRunner:
             # NOTE(woosuk): Here we assume that the first token in the prompt
             # is always the first token in the sequence.
             input_positions.extend(list(range(computed_len, seq_len)))
+
+            if self.lora_config:
+                lora_id = seq_group_metadata.lora_int_id
+
+                if lora_id > 0:
+                    lora_requests.add(seq_group_metadata.lora_request)
+
+                lora_index_mapping += [lora_id] * (seq_len - computed_len)
+                lora_prompt_mapping.extend(
+                    [lora_id] *
+                    (seq_len -
+                     computed_len if seq_group_metadata.sampling_params
+                     and seq_group_metadata.sampling_params.prompt_logprobs
+                     else 1))
 
             mm_data = seq_group_metadata.multi_modal_data
             if mm_data is not None:
@@ -184,24 +222,33 @@ class CPUModelRunner:
             slot_mapping=slot_mapping,
         )
         return (input_tokens, input_positions, attn_metadata, seq_lens,
-                multi_modal_kwargs)
+                multi_modal_kwargs, lora_index_mapping, lora_prompt_mapping,
+                lora_requests)
 
     def _prepare_decode(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
-    ) -> Tuple[torch.Tensor, torch.Tensor, AttentionMetadata]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, AttentionMetadata, List[int],
+               List[int], Set[LoRARequest]]:
         assert len(seq_group_metadata_list) > 0
         input_tokens: List[int] = []
         input_positions: List[int] = []
         slot_mapping: List[int] = []
         seq_lens: List[int] = []
         block_tables: List[List[int]] = []
+        lora_index_mapping: List[int] = []
+        lora_prompt_mapping: List[int] = []
+        lora_requests: Set[LoRARequest] = set()
 
         for seq_group_metadata in seq_group_metadata_list:
             assert not seq_group_metadata.is_prompt
             assert seq_group_metadata.token_chunk_size == 1
 
             seq_ids = list(seq_group_metadata.seq_data.keys())
+            lora_id = seq_group_metadata.lora_int_id
+
+            if lora_id > 0:
+                lora_requests.add(seq_group_metadata.lora_request)
 
             for seq_id in seq_ids:
                 seq_data = seq_group_metadata.seq_data[seq_id]
@@ -221,6 +268,8 @@ class CPUModelRunner:
                 block_offset = position % self.block_size
                 slot = block_number * self.block_size + block_offset
                 slot_mapping.append(slot)
+                lora_index_mapping.append(lora_id)
+                lora_prompt_mapping.append(lora_id)
 
                 if self.sliding_window is not None:
                     sliding_window_blocks = (self.sliding_window //
@@ -264,17 +313,15 @@ class CPUModelRunner:
             num_prefills=0,
             block_tables=block_tables,
         )
-        return (
-            input_tokens,
-            input_positions,
-            attn_metadata,
-        )
+        return (input_tokens, input_positions, attn_metadata,
+                lora_index_mapping, lora_prompt_mapping, lora_requests)
 
     def prepare_input_tensors(
         self,
         seq_group_metadata_list: List[SequenceGroupMetadata],
     ) -> Tuple[torch.Tensor, torch.Tensor, AttentionMetadata, SamplingMetadata,
-               Optional[Dict[str, torch.Tensor]]]:
+               Set[LoRARequest], LoRAMapping, Optional[Dict[str,
+                                                            torch.Tensor]]]:
         multi_modal_kwargs = None
         if self.is_driver_worker:
             # NOTE: We assume that all sequences in the group are all prompts or
@@ -283,12 +330,22 @@ class CPUModelRunner:
             # Prepare input tensors.
             if is_prompt:
                 (input_tokens, input_positions, attn_metadata, seq_lens,
-                 multi_modal_kwargs
-                 ) = self._prepare_prompt(seq_group_metadata_list)
+                 multi_modal_kwargs, lora_index_mapping, lora_prompt_mapping,
+                 lora_requests) = self._prepare_prompt(seq_group_metadata_list)
             else:
-                (input_tokens, input_positions,
-                 attn_metadata) = self._prepare_decode(seq_group_metadata_list)
+                (input_tokens, input_positions, attn_metadata,
+                 lora_index_mapping, lora_prompt_mapping,
+                 lora_requests) = self._prepare_decode(seq_group_metadata_list)
                 seq_lens = []
+
+            if self.lora_config:
+                lora_mapping = LoRAMapping(
+                    lora_index_mapping,
+                    lora_prompt_mapping,
+                )
+            else:
+                lora_mapping = None
+
             sampling_metadata = SamplingMetadata.prepare(
                 seq_group_metadata_list,
                 seq_lens,
@@ -304,6 +361,8 @@ class CPUModelRunner:
                 "input_positions": input_positions,
                 "selected_token_indices":
                 sampling_metadata.selected_token_indices,
+                "lora_requests": lora_requests,
+                "lora_mapping": lora_mapping,
             }
             metadata_dict.update(attn_metadata.asdict_zerocopy())
             broadcast_tensor_dict(metadata_dict, src=0)
@@ -324,7 +383,8 @@ class CPUModelRunner:
             )
 
         return (input_tokens, input_positions, attn_metadata,
-                sampling_metadata, multi_modal_kwargs)
+                sampling_metadata, lora_requests, lora_mapping,
+                multi_modal_kwargs)
 
     @torch.inference_mode()
     def execute_model(
@@ -333,8 +393,11 @@ class CPUModelRunner:
         kv_caches: List[torch.Tensor],
     ) -> Optional[SamplerOutput]:
         (input_tokens, input_positions, attn_metadata, sampling_metadata,
-         multi_modal_input
+         lora_requests, lora_mapping, multi_modal_input
          ) = self.prepare_input_tensors(seq_group_metadata_list)
+
+        if self.lora_config:
+            self.set_active_loras(lora_requests, lora_mapping)
 
         model_executable = self.model
         execute_model_kwargs = {
@@ -361,3 +424,33 @@ class CPUModelRunner:
             sampling_metadata=sampling_metadata,
         )
         return output
+
+    def remove_all_loras(self):
+        if not self.lora_manager:
+            raise RuntimeError("LoRA is not enabled.")
+        self.lora_manager.remove_all_loras()
+
+    def set_active_loras(self, lora_requests: Set[LoRARequest],
+                         lora_mapping: LoRAMapping) -> None:
+        if not self.lora_manager:
+            raise RuntimeError("LoRA is not enabled.")
+        self.lora_manager.set_active_loras(lora_requests, lora_mapping)
+
+    def add_lora(self, lora_request: LoRARequest) -> bool:
+        if not self.lora_manager:
+            raise RuntimeError("LoRA is not enabled.")
+        return self.lora_manager.add_lora(lora_request)
+
+    def remove_lora(self, lora_id: int) -> bool:
+        if not self.lora_manager:
+            raise RuntimeError("LoRA is not enabled.")
+        return self.lora_manager.remove_lora(lora_id)
+
+    def list_loras(self) -> Set[int]:
+        if not self.lora_manager:
+            raise RuntimeError("LoRA is not enabled.")
+        return self.lora_manager.list_loras()
+
+    @property
+    def vocab_size(self) -> int:
+        return self.model_config.get_vocab_size()

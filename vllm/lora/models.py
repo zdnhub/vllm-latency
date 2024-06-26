@@ -18,7 +18,7 @@ from vllm.lora.layers import (BaseLayerWithLoRA,
 from vllm.lora.lora import LoRALayerWeights, PackedLoRALayerWeights
 from vllm.lora.utils import (from_layer, from_layer_logits_processor,
                              parse_fine_tuned_lora_name, replace_submodule)
-from vllm.utils import LRUCache, is_pin_memory_available
+from vllm.utils import LRUCache, is_cpu, is_pin_memory_available
 
 logger = init_logger(__name__)
 
@@ -81,13 +81,14 @@ def convert_mapping(
                 embeddings_indices, long_lora_indices). If long_lora doesn't
                 exist, it only contains first 4 entries.
     """
+    device = "cpu" if is_cpu() else "cuda"
     index_mapping_indices: List[int] = list(mapping.index_mapping).copy()
     embedding_indices = index_mapping_indices.copy()
     lora_indices = index_mapping_indices.copy()
     long_lora_offsets: Optional[torch.Tensor] = None
     if long_lora_context:
         long_lora_offsets = torch.zeros(len(index_mapping_indices),
-                                        device="cuda",
+                                        device=device,
                                         dtype=torch.long)
     prompt_mapping: List[int] = [
         lora_index_to_id.index(x) if x > 0 else -1
@@ -100,6 +101,7 @@ def convert_mapping(
                     if index_mapping_indices[i] > 0 else -1)
         embedding_indices[i] = lora_idx if index_mapping_indices[i] > 0 else 0
         lora_indices[i] = lora_idx
+
         if long_lora_context:
             assert long_lora_offsets is not None
             lora_offset: int = long_lora_context.offsets_by_lora_id.get(
@@ -112,9 +114,10 @@ def convert_mapping(
     if long_lora_context:
         assert long_lora_offsets is not None
         indices_list.append(long_lora_offsets)
-    indices = torch.tensor(indices_list, dtype=torch.long, device="cuda")
+    indices = torch.tensor(indices_list, dtype=torch.long, device=device)
+
     prompt_mapping_tensor = torch.tensor(prompt_mapping,
-                                         device="cuda",
+                                         device=device,
                                          dtype=torch.long)
     embeddings_indices = torch.stack([
         indices[2] * extra_vocab_size,
@@ -127,7 +130,7 @@ def convert_mapping(
     sampler_indices_padded[sampler_indices_padded == -1] = max_loras - 1
     sampler_indices_padded = (
         torch.arange(
-            0, len(sampler_indices_padded), device="cuda", dtype=torch.long) +
+            0, len(sampler_indices_padded), device=device, dtype=torch.long) +
         (sampler_indices_padded * len(sampler_indices_padded)))
     long_lora_indices = None
     long_lora_indices_len: Optional[int] = None
@@ -386,26 +389,29 @@ class LoRAModelManager:
         self.max_num_batched_tokens = math.ceil(max_num_batched_tokens / 8) * 8
         self.lora_index_to_id: List[Optional[int]] = [None] * self.lora_slots
         self.vocab_size = vocab_size
+
+        device = "cpu" if is_cpu() else "cuda"
         self.long_lora_context: Optional[LongContextLoRAContext] = None
         self.base_indices = torch.empty(self.max_num_batched_tokens,
                                         dtype=torch.long,
-                                        device="cuda")
+                                        device=device)
         self.sampler_indices = torch.empty(self.max_num_batched_tokens,
                                            dtype=torch.long,
-                                           device="cuda")
+                                           device=device)
         self.sampler_indices_padded = torch.empty(self.max_num_batched_tokens,
                                                   dtype=torch.long,
-                                                  device="cuda")
+                                                  device=device)
         self.embeddings_indices = torch.empty(2,
                                               self.max_num_batched_tokens,
                                               dtype=torch.long,
-                                              device="cuda")
+                                              device=device)
         self.long_lora_indices = torch.empty(self.max_num_batched_tokens,
                                              dtype=torch.long,
-                                             device="cuda")
+                                             device=device)
         # Scaling factor -> offset to the sin_cos_cache to it.
         # Used for long context lora.
         self.scaling_factor_to_offset: Dict[float, int] = {}
+
         # 4 is the number of indicies tensors defined above
         # base_indices, sampler_indices, sampler_indices_padded,
         # embeddings_indices
