@@ -1153,6 +1153,10 @@ class LoRAConfig:
         if scheduler_config.chunked_prefill_enabled:
             raise ValueError("LoRA is not supported with chunked prefill yet.")
 
+@dataclass
+class ControlVectorConfig:
+    def __post__init(self):
+        print("Created Control Vector Config")
 
 @dataclass
 class VisionLanguageConfig:
@@ -1445,6 +1449,7 @@ class EngineConfig:
     vision_language_config: Optional[VisionLanguageConfig]
     speculative_config: Optional[SpeculativeConfig]
     decoding_config: Optional[DecodingConfig]
+    control_vector_config: Optional[ControlVectorConfig]
     observability_config: Optional[ObservabilityConfig]
 
     def __post_init__(self):
