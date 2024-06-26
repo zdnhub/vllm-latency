@@ -21,7 +21,7 @@ from vllm.entrypoints.openai.serving_engine import (LoRAModulePath,
                                                     OpenAIServing)
 from vllm.logger import init_logger
 from vllm.model_executor.guided_decoding import (
-    get_guided_decoding_logits_processor)
+    GuidedDecodingFields, get_guided_decoding_logits_processor_async, get_guided_decoding_logits_processor_async)
 from vllm.outputs import RequestOutput
 from vllm.sequence import Logprob
 from vllm.tracing import (contains_trace_headers, extract_trace_headers,
@@ -98,18 +98,17 @@ class OpenAIServingCompletion(OpenAIServing):
         try:
             sampling_params = request.to_sampling_params()
             lora_request = self._maybe_get_lora(request)
-            decoding_config = await self.engine.get_decoding_config()
-            guided_decoding_backend = request.guided_decoding_backend \
-                or decoding_config.guided_decoding_backend
-            guided_decode_logit_processor = (
-                await get_guided_decoding_logits_processor(
-                    guided_decoding_backend, request, await
-                    self.engine.get_tokenizer()))
-            if guided_decode_logit_processor is not None:
+            if request.guided_decoding_backend is None:
+                decoding_config = await self.engine.get_decoding_config()
+                request.guided_decoding_backend = (
+                    decoding_config.guided_decoding_backend)
+            processors = (await get_guided_decoding_logits_processor_async(
+                request, await self.engine.get_tokenizer()))
+            if processors is not None:
                 if sampling_params.logits_processors is None:
                     sampling_params.logits_processors = []
-                sampling_params.logits_processors.append(
-                    guided_decode_logit_processor)
+                sampling_params.logits_processors.append(processors)
+
             prompt_is_tokens, prompts = parse_prompt_format(request.prompt)
 
             for i, prompt in enumerate(prompts):

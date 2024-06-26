@@ -25,7 +25,7 @@ from vllm.entrypoints.openai.serving_engine import (LoRAModulePath,
 from vllm.inputs import PromptInputs
 from vllm.logger import init_logger
 from vllm.model_executor.guided_decoding import (
-    get_guided_decoding_logits_processor)
+    GuidedDecodingFields, get_guided_decoding_logits_processor_async, get_guided_decoding_logits_processor_async)
 from vllm.multimodal.image import ImagePixelData
 from vllm.multimodal.utils import (async_get_and_parse_image,
                                    get_full_image_text_prompt)
@@ -247,18 +247,20 @@ class OpenAIServingChat(OpenAIServing):
                 add_special_tokens=request.add_special_tokens)
             sampling_params = request.to_sampling_params()
             lora_request = self._maybe_get_lora(request)
-            decoding_config = await self.engine.get_decoding_config()
-            guided_decoding_backend = request.guided_decoding_backend \
-                or decoding_config.guided_decoding_backend
-            guided_decode_logits_processor = (
-                await get_guided_decoding_logits_processor(
-                    guided_decoding_backend, request, await
-                    self.engine.get_tokenizer()))
-            if guided_decode_logits_processor:
+
+            # request = adapt_request_for_tool_use(request)
+            # options = GuidedDecodingFields.from_openai_request(request)
+            if request.guided_decoding_backend is None:
+                decoding_config = await self.engine.get_decoding_config()
+                request.guided_decoding_backend = (
+                    decoding_config.guided_decoding_backend)
+            processors = (await get_guided_decoding_logits_processor_async(
+                request, await self.engine.get_tokenizer()))
+            if processors:
                 if sampling_params.logits_processors is None:
                     sampling_params.logits_processors = []
-                sampling_params.logits_processors.append(
-                    guided_decode_logits_processor)
+                sampling_params.logits_processors.append(processors)
+
         except ValueError as e:
             return self.create_error_response(str(e))
 

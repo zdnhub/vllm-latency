@@ -16,14 +16,15 @@ from PIL import Image
 from transformers import (AutoModelForCausalLM, AutoModelForVision2Seq,
                           AutoProcessor, AutoTokenizer, BatchEncoding)
 
-from vllm import LLM, SamplingParams
 from vllm.config import TokenizerPoolConfig, VisionLanguageConfig
 from vllm.distributed import (destroy_distributed_environment,
                               destroy_model_parallel)
+from vllm.entrypoints.llm import LLM
 from vllm.inputs import TextPrompt
 from vllm.logger import init_logger
 from vllm.multimodal import MultiModalData
 from vllm.multimodal.image import ImageFeatureData, ImagePixelData
+from vllm.sampling_params import SamplingParams
 from vllm.sequence import SampleLogprobs
 from vllm.utils import cuda_device_count_stateless, is_cpu
 

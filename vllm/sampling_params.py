@@ -104,6 +104,8 @@ class SamplingParams:
         truncate_prompt_tokens: If set to an integer k, will use only the last k
             tokens from the prompt (i.e., left truncation). Defaults to None
             (i.e., no truncation).
+        guided_options: Configuration dictionary for guided decoding. Refer to
+            the `GuidedDecodingFields` class for the available options.
     """
 
     def __init__(
@@ -134,6 +136,7 @@ class SamplingParams:
         spaces_between_special_tokens: bool = True,
         logits_processors: Optional[List[LogitsProcessor]] = None,
         truncate_prompt_tokens: Optional[Annotated[int, Field(ge=1)]] = None,
+        # guided_options: Optional[Union[Dict, "GuidedDecodingFields"]] = None
     ) -> None:
         self.n = n
         self.best_of = best_of if best_of is not None else n
@@ -181,6 +184,8 @@ class SamplingParams:
             self.output_text_buffer_length = max(len(s) for s in self.stop) - 1
         else:
             self.output_text_buffer_length = 0
+
+        # self.guided_options = guided_options
 
         self._verify_args()
         if self.use_beam_search:
@@ -342,4 +347,4 @@ class SamplingParams:
             f"skip_special_tokens={self.skip_special_tokens}, "
             "spaces_between_special_tokens="
             f"{self.spaces_between_special_tokens}, "
-            f"truncate_prompt_tokens={self.truncate_prompt_tokens})")
+            f"truncate_prompt_tokens={self.truncate_prompt_tokens}),")
