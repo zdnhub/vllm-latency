@@ -1,6 +1,7 @@
 import dataclasses
 import importlib
 import os
+import runpy
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
@@ -270,6 +271,7 @@ class WorkerWrapperBase:
     def __init__(self,
                  worker_module_name: str,
                  worker_class_name: str,
+                 worker_init_callback_script: str = "",
                  trust_remote_code: bool = False) -> None:
         self.worker_module_name = worker_module_name
         self.worker_class_name = worker_class_name
@@ -278,6 +280,7 @@ class WorkerWrapperBase:
             # note: lazy import to avoid importing torch before initializing
             from vllm.utils import init_cached_hf_modules
             init_cached_hf_modules()
+        self.worker_init_callback_script = worker_init_callback_script
 
     @staticmethod
     def update_environment_variables(envs: Dict[str, str]) -> None:
@@ -305,6 +308,9 @@ class WorkerWrapperBase:
 
         # see https://github.com/NVIDIA/nccl/issues/1234
         os.environ['NCCL_CUMEM_ENABLE'] = '0'
+
+        if self.worker_init_callback_script:
+            runpy.run_path(self.worker_init_callback_script)
 
         mod = importlib.import_module(self.worker_module_name)
         worker_class = getattr(mod, self.worker_class_name)
