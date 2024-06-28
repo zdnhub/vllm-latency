@@ -84,6 +84,8 @@ class ModelConfig:
             matches the model name exposed via the APIs. If multiple model 
             names provided, the first name will be used. If not specified, 
             the model name will be the same as `model`.
+        use_attention_sinks: If True, allow the model to use attention sinks
+            and exceed its context length during decoding.
     """
 
     def __init__(
@@ -109,6 +111,7 @@ class ModelConfig:
         disable_sliding_window: bool = False,
         skip_tokenizer_init: bool = False,
         served_model_name: Optional[Union[str, List[str]]] = None,
+        use_attention_sinks: bool = False,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -159,6 +162,7 @@ class ModelConfig:
             sliding_window_len=self.get_hf_config_sliding_window())
         self.served_model_name = get_served_model_name(model,
                                                        served_model_name)
+        self.use_attention_sinks = use_attention_sinks
         if not self.skip_tokenizer_init:
             self._verify_tokenizer_mode()
         self._verify_embedding_mode()
@@ -385,6 +389,7 @@ class CacheConfig:
         num_gpu_blocks_override: Optional[int] = None,
         sliding_window: Optional[int] = None,
         enable_prefix_caching: bool = False,
+        use_attention_sinks: bool = False,
     ) -> None:
         self.block_size = block_size
         self.gpu_memory_utilization = gpu_memory_utilization
@@ -393,6 +398,7 @@ class CacheConfig:
         self.cache_dtype = cache_dtype
         self.sliding_window = sliding_window
         self.enable_prefix_caching = enable_prefix_caching
+        self.use_attention_sinks = use_attention_sinks
         self._verify_args()
         self._verify_cache_dtype()
         self._verify_prefix_caching()

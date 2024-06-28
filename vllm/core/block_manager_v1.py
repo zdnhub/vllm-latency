@@ -221,6 +221,7 @@ class BlockSpaceManagerV1(BlockSpaceManager):
         watermark: float = 0.01,
         sliding_window: Optional[int] = None,
         enable_caching: bool = False,
+        attn_sink_context_len: Optional[int] = None,
     ) -> None:
         self.block_size = block_size
         self.num_total_gpu_blocks = num_gpu_blocks
@@ -240,6 +241,11 @@ class BlockSpaceManagerV1(BlockSpaceManager):
         assert watermark >= 0.0
 
         self.enable_caching = enable_caching
+        
+        if attn_sink_context_len:
+            self.max_blocks = attn_sink_context_len // block_size
+        else:
+            self.max_blocks = float('inf')
 
         self.watermark_blocks = int(watermark * num_gpu_blocks)
 
@@ -445,6 +451,14 @@ class BlockSpaceManagerV1(BlockSpaceManager):
                 # Allocate a new physical block.
                 new_block = self._allocate_last_physical_block(seq)
                 block_table.append(new_block)
+
+                # Attention sinks logic
+                if len(block_table) > self.max_blocks:
+                    # 0th block is attention sink
+                    self.gpu_allocator.free(block_table[1])
+                    seq.logical_token_blocks = [logical_blocks[0]] + logical_blocks[2:]
+                    self.block_tables[seq.seq_id] = [block_table[0]] + block_table[2:]
+
                 return []
 
         # We want to append the token to the last physical block.

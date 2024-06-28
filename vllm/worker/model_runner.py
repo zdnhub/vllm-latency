@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 
 from vllm.attention import AttentionMetadata, get_attn_backend
+from vllm.attention_sinks import apply_attn_sinks_to_model
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, ParallelConfig, SchedulerConfig,
                          VisionLanguageConfig)
@@ -267,6 +268,14 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                     "Using FP8 KV cache but no scaling factors "
                     "provided. Defaulting to scaling factors of 1.0. "
                     "This may lead to less accurate results!")
+
+        if self.model_config.use_attention_sinks:
+            apply_attn_sinks_to_model(
+                self.model,
+                self.model_config,
+                self.cache_config,
+                self.scheduler_config.chunked_prefill_enabled
+            )
 
     def save_sharded_state(
         self,
@@ -544,14 +553,29 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                     # to save memory.
                     start_idx = max(0, query_len - self.sliding_window)
 
+                # Numbers for attention sinks logic
+                max_model_len = self.model_config.max_model_len
+                block_size = self.block_size
+                num_evicted_tokens = ((seq_len - max_model_len - 1)
+                                      // block_size + 1) * block_size
+                window_start_pos = block_size + num_evicted_tokens
                 for i in range(context_len, seq_len):
                     if i < start_idx:
                         slot_mapping.append(_PAD_SLOT_ID)
                         continue
 
-                    block_number = block_table[i // self.block_size]
-                    block_offset = i % self.block_size
-                    slot = block_number * self.block_size + block_offset
+                    # Attention sinks: abs pos for slot needs to be shifted
+                    #                  back when past max model length
+                    if (self.model_config.use_attention_sinks
+                        and seq_len > max_model_len):
+                        if block_size <= i < window_start_pos:
+                            continue  # skip over evicted tokens
+                        else:
+                            i -= num_evicted_tokens
+                    
+                    block_number = block_table[i // block_size]
+                    block_offset = i % block_size
+                    slot = block_number * block_size + block_offset
                     slot_mapping.append(slot)
 
         batch_size = len(input_tokens)
