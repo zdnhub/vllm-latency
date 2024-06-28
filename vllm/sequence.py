@@ -392,6 +392,8 @@ class SequenceGroup:
         encoder_seq: Optional, the single encoder sequence. Should be None
                      unless you are working with an encoder/decoder model.
         trace_headers: OpenTelemetry trace headers.
+        priority: The priority of the request. Used for sorting requests in
+            the queue.
     """
 
     def __init__(
@@ -405,6 +407,7 @@ class SequenceGroup:
         pooling_params: Optional[PoolingParams] = None,
         encoder_seq: Optional[Sequence] = None,
         trace_headers: Optional[Dict[str, str]] = None,
+        priority: Optional[int] = None,
     ) -> None:
         self.request_id = request_id
         self.seqs_dict = {seq.seq_id: seq for seq in seqs}
@@ -421,6 +424,7 @@ class SequenceGroup:
         self.pooling_params = pooling_params
         self.encoder_seq = encoder_seq
         self.trace_headers = trace_headers
+        self.priority = priority
 
     @property
     def prompt(self) -> Optional[str]:

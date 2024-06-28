@@ -615,6 +615,7 @@ class Scheduler:
         waiting_queue: deque,
         budget: SchedulingBudget,
         curr_loras: Optional[Set[int]],
+        policy: Policy,
         enable_chunking: bool = False,
     ) -> Tuple[deque, SchedulerPrefillOutputs]:
         """Schedule sequence groups that are in prefill stage.
@@ -634,6 +635,7 @@ class Scheduler:
                 when any requests are scheduled.
             curr_loras: Currently batched lora request ids. The argument is
                 in-place updated when any requests are scheduled.
+            policy: The scheduling policy to sort waiting_queue.
             enable_chunking: If True, seq group can be chunked and only a
                 chunked number of tokens are scheduled  if
                 `budget.num_batched_tokens` has not enough capacity to schedule
@@ -645,7 +647,12 @@ class Scheduler:
         """
         ignored_seq_groups: List[SequenceGroup] = []
         seq_groups: List[SequenceGroup] = []
-        # We don't sort waiting queue because we assume it is sorted.
+
+        # Sort the waiting queue by priority.
+        if policy.sort_waiting():
+            now = time.time()
+            waiting_queue = policy.sort_by_priority(now, waiting_queue)
+
         # Copy the queue so that the input queue is not modified.
         waiting_queue = deque([s for s in waiting_queue])
 
@@ -760,12 +767,18 @@ class Scheduler:
         remaining_swapped, swapped_in = (
             self.swapped, SchedulerSwappedInOutputs.create_empty())
 
+        policy = PolicyFactory.get_policy(
+            policy_name=self.scheduler_config.policy)
+
         # If any requests are swapped, prioritized swapped requests.
         if not self.swapped:
             remaining_waiting, prefills = self._schedule_prefills(
-                self.waiting, budget, curr_loras, enable_chunking=False)
+                self.waiting,
+                budget,
+                curr_loras,
+                policy,
+                enable_chunking=False)
 
-        fcfs_policy = PolicyFactory.get_policy(policy_name="fcfs")
         # Don't schedule decodes if prefills are scheduled.
         # NOTE: If `_schedule_prefills` doesn't enable chunking, self.running
         # only contains decode requests, not chunked prefills.
@@ -774,7 +787,7 @@ class Scheduler:
                 self.running,
                 budget,
                 curr_loras,
-                fcfs_policy,
+                policy,
                 enable_chunking=False)
 
             # If any sequence group is preempted, do not swap in any sequence
@@ -782,7 +795,7 @@ class Scheduler:
             if len(running_scheduled.preempted) + len(
                     running_scheduled.swapped_out) == 0:
                 remaining_swapped, swapped_in = self._schedule_swapped(
-                    self.swapped, budget, curr_loras, fcfs_policy)
+                    self.swapped, budget, curr_loras, policy)
 
         assert (budget.num_batched_tokens <=
                 self.scheduler_config.max_num_batched_tokens)
@@ -870,7 +883,11 @@ class Scheduler:
 
         # Schedule new prefills.
         remaining_waiting, prefills = self._schedule_prefills(
-            self.waiting, budget, curr_loras, enable_chunking=True)
+            self.waiting,
+            budget,
+            curr_loras,
+            fcfs_policy,
+            enable_chunking=True)
 
         assert (budget.num_batched_tokens <=
                 self.scheduler_config.max_num_batched_tokens)
