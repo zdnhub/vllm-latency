@@ -1,13 +1,17 @@
 """Sequence and its related classes."""
 import copy
 import enum
+import hashlib
 import math
+import weakref
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 
+from vllm.array_pool import alloc_array, del_array
 from vllm.inputs import LLMInputs
 from vllm.lora.request import LoRARequest
 from vllm.pooling_params import PoolingParams
@@ -107,55 +111,76 @@ class SequenceData:
         prompt_token_ids: The token IDs of the prompt.
         output_token_ids: The token IDs of the output. Set to an empty list if
             None.
+        max_seq_len: The maximum sequence length. A buffer of this size is
+            allocated for the tokens. By default, it is set to 16k for test
+            purposes. During inference, it should be set to the maximum
+            sequence length of the model.
 
     Attributes:
         prompt_token_ids: The token IDs of the prompt.
         output_token_ids: The token IDs of the output.
         cumulative_logprob: The cumulative log probability of the output.
+        tokens: array of all the tokens (prompt + output)
+    
+    NOTE: special care must be taken regarding data copy and returning `list`
+        or `np.ndarray` from this class. `get_prompt_token_ids` and 
+        `get_output_token_ids` return `list`. They are used to construct
+        request output that will be returned to the user. They need to be
+        Python lists. And they are actually quite cheap, because the function
+        returns a reference to the list that is already stored in the object.
+        `get_token_ids` returns a view of `np.ndarray`. It avoids data copy,
+        and also allows array operations to be performed on the data.
     """
 
     def __init__(
         self,
         prompt_token_ids: List[int],
         output_token_ids: Optional[List[int]] = None,
+        max_seq_len: Optional[int] = None,
     ) -> None:
+        self.max_seq_len = max_seq_len or 16 * 1024
+        self.tokens = alloc_array(self.max_seq_len)
+        self.prompt_token_ids_list = prompt_token_ids
+        self.num_prompt_tokens = len(prompt_token_ids)
+        self.tokens[:self.num_prompt_tokens] = prompt_token_ids
         if output_token_ids is None:
             output_token_ids = []
-
-        self.prompt_token_ids = prompt_token_ids
-        self._prompt_token_ids_tuple = tuple(prompt_token_ids)
-        self.output_token_ids = output_token_ids
+        self.num_output_tokens = len(output_token_ids)
+        self.output_token_ids_list = output_token_ids
+        self.tokens[self.num_prompt_tokens:self.num_prompt_tokens +
+                    self.num_output_tokens] = output_token_ids
         self.cumulative_logprob = 0.0
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
         self._stage: SequenceStage = SequenceStage.PREFILL
+        self._finalizer = weakref.finalize(self, del_array, self.tokens)
 
     def append_token_id(self, token_id: int, logprob: float) -> None:
-        self.output_token_ids.append(token_id)
+        self.tokens[self.num_prompt_tokens + self.num_output_tokens] = token_id
+        self.output_token_ids_list.append(token_id)
+        self.num_output_tokens += 1
         self.cumulative_logprob += logprob
 
     def get_len(self) -> int:
-        return len(self.output_token_ids) + len(self.prompt_token_ids)
+        return self.num_prompt_tokens + self.num_output_tokens
 
     def get_prompt_len(self) -> int:
-        return len(self.prompt_token_ids)
+        return self.num_prompt_tokens
 
     def get_output_len(self) -> int:
-        return len(self.output_token_ids)
+        return self.num_output_tokens
 
-    def get_token_ids(self) -> List[int]:
-        return self.prompt_token_ids + self.output_token_ids
+    def get_token_ids(self) -> np.ndarray:
+        return self.tokens[:self.num_prompt_tokens + self.num_output_tokens]
 
-    def get_prefix_token_ids(
-            self, num_tokens: int
-    ) -> Tuple[Tuple[int, ...], Optional[Tuple[int, ...]]]:
+    def hash_prefix_token_ids(self, num_tokens: int) -> bytes:
         """Get prefix tokens, and make the return value hashable"""
-        prompt_length = len(self.prompt_token_ids)
-        if num_tokens > prompt_length:
-            return (self._prompt_token_ids_tuple,
-                    tuple(self.output_token_ids[:num_tokens - prompt_length]))
-        else:
-            return (self._prompt_token_ids_tuple[:num_tokens], None)
+        data = self.tokens[:num_tokens]
+        # get a memory view of the underlying data
+        buffer = memoryview(data)  # type: ignore
+        # hash the memory view
+        hash_value = hashlib.sha256(buffer).digest()
+        return hash_value
 
     def get_num_computed_tokens(self) -> int:
         """Return the number of prefill tokens that are already computed."""
@@ -186,15 +211,14 @@ class SequenceData:
         return self.get_len() - self.get_num_computed_tokens()
 
     def get_last_token_id(self) -> int:
-        if not self.output_token_ids:
-            return self.prompt_token_ids[-1]
-        return self.output_token_ids[-1]
+        return int(self.tokens[self.num_prompt_tokens +
+                               self.num_output_tokens - 1])
 
     def get_prompt_token_ids(self) -> List[int]:
-        return self.prompt_token_ids
+        return self.prompt_token_ids_list
 
     def get_output_token_ids(self) -> List[int]:
-        return self.output_token_ids
+        return self.output_token_ids_list
 
     @property
     def stage(self) -> SequenceStage:
@@ -202,8 +226,8 @@ class SequenceData:
 
     def __repr__(self) -> str:
         return (f"SequenceData("
-                f"prompt_token_ids={self.prompt_token_ids}, "
-                f"output_token_ids={self.output_token_ids}, "
+                f"prompt_token_ids={self.get_prompt_token_ids()}, "
+                f"output_token_ids={self.get_output_token_ids()}, "
                 f"cumulative_logprob={self.cumulative_logprob})")
 
 
@@ -225,6 +249,7 @@ class Sequence:
         block_size: int,
         eos_token_id: Optional[int] = None,
         lora_request: Optional[LoRARequest] = None,
+        max_seq_len: Optional[int] = None,
     ) -> None:
         self.seq_id = seq_id
         self.inputs = inputs
@@ -232,10 +257,15 @@ class Sequence:
         self.eos_token_id = eos_token_id
         self.lora_request = lora_request
 
-        self.data = SequenceData(self.prompt_token_ids)
+        self.max_seq_len = max_seq_len
+        self.data = SequenceData(self.inputs["prompt_token_ids"],
+                                 max_seq_len=max_seq_len)
+        self.prompt_token_ids: List[int] = self.inputs["prompt_token_ids"]
+        self.prompt: Optional[str] = self.inputs.get("prompt")
         self.output_logprobs: SampleLogprobs = []
         self.output_text = ""
 
+        # Initialize the logical token blocks with the prompt token ids.
         self.status = SequenceStatus.WAITING
         self.stop_reason: Union[int, str, None] = None
 
@@ -247,15 +277,7 @@ class Sequence:
 
     @property
     def n_blocks(self) -> int:
-        return math.ceil(self.get_len() / self.block_size)
-
-    @property
-    def prompt(self) -> Optional[str]:
-        return self.inputs.get("prompt")
-
-    @property
-    def prompt_token_ids(self) -> List[int]:
-        return self.inputs["prompt_token_ids"]
+        return math.ceil(self.data.get_len() / self.block_size)
 
     @property
     def multi_modal_data(self) -> Optional["MultiModalData"]:
@@ -278,8 +300,8 @@ class Sequence:
         # TODO: The current hashing function is O(L^2). We should optimize
         # this in the future.
         num_tokens = self.num_hashed_tokens_of_block(logical_idx)
-        hashed_tokens = self.data.get_prefix_token_ids(num_tokens)
-        return hash((hashed_tokens, self.lora_int_id))
+        tokens_hash = self.data.hash_prefix_token_ids(num_tokens)
+        return hash((tokens_hash, self.lora_int_id))
 
     def num_hashed_tokens_of_block(self, logical_idx: int):
         return logical_idx * self.block_size + self.block_size
@@ -306,7 +328,7 @@ class Sequence:
     def get_output_len(self) -> int:
         return self.data.get_output_len()
 
-    def get_token_ids(self) -> List[int]:
+    def get_token_ids(self) -> np.ndarray:
         return self.data.get_token_ids()
 
     def get_prompt_token_ids(self) -> List[int]:
@@ -316,7 +338,7 @@ class Sequence:
         return self.data.get_last_token_id()
 
     def get_output_token_ids(self) -> List[int]:
-        return self.data.output_token_ids
+        return self.data.get_output_token_ids()
 
     def get_cumulative_logprob(self) -> float:
         return self.data.cumulative_logprob
