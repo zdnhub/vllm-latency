@@ -16,27 +16,6 @@ print("=" * 80)
 
 # In this script, we demonstrate four different ways to pass input to the chat method of the LLM class:
 
-# Single turn conversation with a string message
-message = "Explain the concept of entropy."
-outputs = llm.chat(
-    message,
-    sampling_params=sampling_params,
-    use_tqdm=False,
-)
-print_outputs(outputs)
-
-# Multiple single turn conversations with a list of string messages
-messages = [
-    "Explain Newton's laws.", "Describe Bangkok in 150 words.",
-    "Give me some examples of programming languages."
-]
-outputs = llm.chat(
-    messages,
-    sampling_params=sampling_params,
-    use_tqdm=False,
-)
-print_outputs(outputs)
-
 # Conversation with a list of dictionaries
 conversation = [
     {
@@ -114,3 +93,23 @@ print_outputs(outputs)
 #     use_tqdm=False,
 #     chat_template=chat_template,
 # )
+
+# str and list[str] inputs are treated as text completions, similar to LLM.generate(),
+message = "Entropy is"
+outputs = llm.chat(
+    message,
+    sampling_params=sampling_params,
+    use_tqdm=False,
+)
+print_outputs(outputs)
+
+messages = [
+    "Relativity is a theory about", "Bangkok is a city in",
+    "One of the best programming languages is"
+]
+outputs = llm.chat(
+    messages,
+    sampling_params=sampling_params,
+    use_tqdm=False,
+)
+print_outputs(outputs)

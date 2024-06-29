@@ -197,7 +197,6 @@ class LLM:
                                         List[SamplingParams]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[LoRARequest] = None,
-        global_system_prompt: Optional[str] = None,
         chat_template: Optional[str] = None,
     ) -> List[RequestOutput]:
         """
@@ -209,7 +208,8 @@ class LLM:
         Args:
             messages: A list of messages to generate responses for. Each 
                 message is a list of dictionaries with 'role' and 'content' 
-                keys.
+                keys. If a string or a list of strings are
+                passed, they are treated as text completions.
             sampling_params: The sampling parameters for text generation. 
                 If None, we use the default sampling parameters. When it 
                 is a single value, it is applied to every prompt. When it 
@@ -217,8 +217,6 @@ class LLM:
                 prompts and it is paired one by one with the prompt.
             use_tqdm: Whether to use tqdm to display the progress bar.
             lora_request: LoRA request to use for generation, if any.
-            global_system_prompt: The initial system prompt used for each 
-            single turn conversation.
             chat_template: The template to use for structuring the chat.
               If not provided, the model's default chat template will be used.
 
@@ -228,31 +226,9 @@ class LLM:
         """
 
         tokenizer = self.get_tokenizer()
-        default_system_prompt = "You are a helpful assistant."
 
-        if isinstance(messages, str):
-            # Single turn conversation
-            messages = [{
-                'role':
-                'system',
-                'content':
-                global_system_prompt or default_system_prompt
-            }, {
-                'role': 'user',
-                'content': messages
-            }]
-
-        elif isinstance(messages[0], str):
-            # Multiple single turn conversations
-            messages = [[{
-                'role':
-                'system',
-                'content':
-                global_system_prompt or default_system_prompt
-            }, {
-                'role': 'user',
-                'content': str(message)
-            }] for message in messages]
+        prompts = messages if isinstance(messages, str) or isinstance(
+            messages[0], str) else None
 
         if isinstance(messages[0], list):
             # Convert messages to prompts
@@ -264,7 +240,7 @@ class LLM:
                 for message in messages
             ]
 
-        else:
+        elif isinstance(messages[0], dict):
             prompts = tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
