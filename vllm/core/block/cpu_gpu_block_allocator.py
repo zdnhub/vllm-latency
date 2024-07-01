@@ -1,4 +1,4 @@
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from vllm.core.block.interfaces import (Block, BlockAllocator, BlockId,
                                         DeviceAwareBlockAllocator)
@@ -52,38 +52,45 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
             - The block IDs are assigned contiguously, with GPU block IDs coming
                 before CPU block IDs.
         """
-        block_ids = list(range(num_gpu_blocks + num_cpu_blocks))
-        gpu_block_ids = block_ids[:num_gpu_blocks]
-        cpu_block_ids = block_ids[num_gpu_blocks:]
-
         if allocator_type == "naive":
             gpu_allocator: BlockAllocator = NaiveBlockAllocator(
                 create_block=NaiveBlock,  # type: ignore
                 num_blocks=num_gpu_blocks,
                 block_size=block_size,
-                block_ids=gpu_block_ids,
+                block_index_start=0,
             )
 
             cpu_allocator: BlockAllocator = NaiveBlockAllocator(
                 create_block=NaiveBlock,  # type: ignore
                 num_blocks=num_cpu_blocks,
                 block_size=block_size,
-                block_ids=cpu_block_ids,
+                block_index_start=num_gpu_blocks,
             )
         elif allocator_type == "prefix_caching":
             gpu_allocator = PrefixCachingBlockAllocator(
                 num_blocks=num_gpu_blocks,
                 block_size=block_size,
-                block_ids=gpu_block_ids,
+                block_index_start=0,
             )
 
             cpu_allocator = PrefixCachingBlockAllocator(
                 num_blocks=num_cpu_blocks,
                 block_size=block_size,
-                block_ids=cpu_block_ids,
+                block_index_start=num_gpu_blocks,
             )
         else:
             raise ValueError(f"Unknown allocator type {allocator_type=}")
+
+        cpu_index = set(
+            list(
+                range(cpu_allocator.block_index_start,
+                      cpu_allocator.block_index_end)))
+        gpu_index = set(
+            list(
+                range(gpu_allocator.block_index_start,
+                      gpu_allocator.block_index_end)))
+        intersection = cpu_index & gpu_index
+        assert not intersection, f"block indices overlap: {intersection}"
 
         return CpuGpuBlockAllocator(
             cpu_block_allocator=cpu_allocator,
@@ -92,23 +99,22 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
 
     def __init__(self, cpu_block_allocator: BlockAllocator,
                  gpu_block_allocator: BlockAllocator):
-        assert not (
-            cpu_block_allocator.all_block_ids
-            & gpu_block_allocator.all_block_ids
-        ), "cpu and gpu block allocators can't have intersection of block ids"
-
         self._allocators = {
             Device.CPU: cpu_block_allocator,
             Device.GPU: gpu_block_allocator,
         }
+        self.cpu_block_allocator = cpu_block_allocator
+        self.gpu_block_allocator = gpu_block_allocator
 
         self._swap_mapping: Dict[int, int] = {}
         self._null_block: Optional[Block] = None
 
-        self._block_ids_to_allocator: Dict[int, BlockAllocator] = {}
-        for _, allocator in self._allocators.items():
-            for block_id in allocator.all_block_ids:
-                self._block_ids_to_allocator[block_id] = allocator
+    def block_ids_to_allocator(self, block_id: int) -> BlockAllocator:
+        if self.cpu_block_allocator.block_index_start <= block_id < self.cpu_block_allocator.block_index_end:  # noqa
+            return self.cpu_block_allocator
+        if self.gpu_block_allocator.block_index_start <= block_id < self.gpu_block_allocator.block_index_end:  # noqa
+            return self.gpu_block_allocator
+        raise RuntimeError(f"unrecognized {block_id=}")
 
     def allocate_or_get_null_block(self) -> Block:
         if self._null_block is None:
@@ -160,7 +166,7 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
             return
         block_id = block.block_id
         assert block_id is not None
-        allocator = self._block_ids_to_allocator[block_id]
+        allocator = self.block_ids_to_allocator(block_id)
         return allocator.free(block)
 
     def fork(self, last_block: Block) -> List[Block]:
@@ -178,7 +184,7 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
         assert not isinstance(last_block, NullBlock)
         block_id = last_block.block_id
         assert block_id is not None
-        allocator = self._block_ids_to_allocator[block_id]
+        allocator = self.block_ids_to_allocator(block_id)
         return allocator.fork(last_block)
 
     def get_num_free_blocks(self, device: Device) -> int:
@@ -289,10 +295,6 @@ class CpuGpuBlockAllocator(DeviceAwareBlockAllocator):
         device = Device.GPU
         return self._allocators[device].get_common_computed_block_ids(
             seq_block_ids)
-
-    @property
-    def all_block_ids(self) -> FrozenSet[int]:
-        return frozenset(self._block_ids_to_allocator.keys())
 
     def promote_to_immutable_block(self, block: Block) -> BlockId:
         raise NotImplementedError

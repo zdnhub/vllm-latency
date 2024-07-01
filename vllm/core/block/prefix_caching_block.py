@@ -2,9 +2,9 @@
 
 from itertools import takewhile
 from os.path import commonprefix
-from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from vllm.core.block.common import (CopyOnWriteTracker,
+from vllm.core.block.common import (CopyOnWriteTracker, RefCounter,
                                     get_all_blocks_recursively)
 from vllm.core.block.interfaces import Block, BlockAllocator, BlockId, Device
 from vllm.core.block.naive_block import NaiveBlock, NaiveBlockAllocator
@@ -38,7 +38,7 @@ class PrefixCachingBlockAllocator(BlockAllocator):
         self,
         num_blocks: int,
         block_size: int,
-        block_ids: Optional[Iterable[int]] = None,
+        block_index_start: Optional[int] = None,
         eviction_policy: EvictionPolicy = EvictionPolicy.LRU,
     ):
         # A mapping of prefix hash to block index. All blocks which have a
@@ -53,8 +53,11 @@ class PrefixCachingBlockAllocator(BlockAllocator):
             create_block=self._create_block,  # type: ignore
             num_blocks=num_blocks,
             block_size=block_size,
-            block_ids=block_ids,
+            block_index_start=block_index_start,
         )
+        self.num_blocks = self._hashless_allocator.num_blocks
+        self.block_index_start = self._hashless_allocator.block_index_start
+        self.block_index_end = self._hashless_allocator.block_index_end
 
         self._block_size = block_size
 
@@ -65,7 +68,7 @@ class PrefixCachingBlockAllocator(BlockAllocator):
         # We share the refcounter between allocators. This allows us to promote
         # blocks originally allocated in the hashless allocator to immutable
         # blocks.
-        self._refcounter = self._hashless_allocator.refcounter
+        self._refcounter: RefCounter = self._hashless_allocator._refcounter
 
         self._cow_tracker = CopyOnWriteTracker(
             refcounter=self._refcounter.as_readonly(),
@@ -274,6 +277,7 @@ class PrefixCachingBlockAllocator(BlockAllocator):
         forked_blocks: List[Block] = []
         prev_block = None
         for block in source_blocks:
+            assert block.block_id is not None
             refcount = self._refcounter.incr(block.block_id)
             assert refcount != 1, "can't fork free'd block"
 
@@ -310,11 +314,7 @@ class PrefixCachingBlockAllocator(BlockAllocator):
         Returns:
             int: The rzero-offset block id on certain device.
         """
-        return sorted(self.all_block_ids).index(absolute_id)
-
-    @property
-    def all_block_ids(self) -> FrozenSet[int]:
-        return self._hashless_allocator.all_block_ids
+        return self._hashless_allocator.get_physical_block_id(absolute_id)
 
     def is_block_cached(self, block: Block) -> bool:
         assert block.content_hash is not None

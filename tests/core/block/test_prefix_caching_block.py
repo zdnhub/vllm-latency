@@ -451,7 +451,7 @@ class TestPrefixCachingBlockAllocator:
         random.seed(seed)
 
         all_blocks_list = [i for i in range(num_blocks)]
-        zero_ref = {i: 0 for i in range(num_blocks)}
+        zero_ref = [0] * num_blocks
         allocator = PrefixCachingBlockAllocator(num_blocks=num_blocks,
                                                 block_size=block_size)
         token_ids = list(range(num_blocks * block_size))
@@ -459,8 +459,8 @@ class TestPrefixCachingBlockAllocator:
         # now we have num_blocks free blocks in hashless allocator
         # with internal tracking list _blocks _cached_blocks and evictor
         # empty and block's ref shall be 0
-        assert list(allocator._hashless_allocator._free_block_indices
-                    ) == all_blocks_list
+        assert sorted(allocator._hashless_allocator._free_block_indices
+                      ) == all_blocks_list
         assert len(allocator._blocks.keys()) == 0
         assert len(allocator._cached_blocks.values()) == 0
         assert len(allocator.evictor.free_table.keys()) == 0
@@ -483,8 +483,10 @@ class TestPrefixCachingBlockAllocator:
 
         assert len(allocator._blocks.keys()) == 0
         assert len(allocator._hashless_allocator._free_block_indices) == 0
-        assert list(allocator._cached_blocks.values()) == all_blocks_list
-        assert list(allocator.evictor.free_table.keys()) == all_blocks_list
+        assert sorted(list(
+            allocator._cached_blocks.values())) == all_blocks_list
+        assert sorted(list(
+            allocator.evictor.free_table.keys())) == all_blocks_list
         assert allocator._refcounter._refcounts == zero_ref
 
         # Allocate a mutable block, and the first block shall be evicted

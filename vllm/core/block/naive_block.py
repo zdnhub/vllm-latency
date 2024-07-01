@@ -1,4 +1,4 @@
-from typing import FrozenSet, Iterable, List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 from vllm.core.block.common import (CopyOnWriteTracker, RefCounter,
                                     get_all_blocks_recursively)
@@ -30,17 +30,19 @@ class NaiveBlockAllocator(BlockAllocator):
         create_block: Block.Factory,
         num_blocks: int,
         block_size: int,
-        block_ids: Optional[Iterable[int]] = None,
+        block_index_start: Optional[int] = None,
     ):
-        if block_ids is None:
-            block_ids = range(num_blocks)
+        block_index_start = block_index_start or 0
+        block_index_end = block_index_start + num_blocks
+        self.block_index_start = block_index_start
+        self.block_index_end = block_index_end
+        self.num_blocks = num_blocks
+        self._free_block_indices = list(
+            range(block_index_start, block_index_end))[::-1]
 
-        self._free_block_indices: Set[BlockId] = set(block_ids)
-        self._all_block_indices = frozenset(block_ids)
-        assert len(self._all_block_indices) == num_blocks
-
-        self._refcounter = RefCounter(
-            all_block_indices=self._free_block_indices)
+        self._refcounter: RefCounter = RefCounter(
+            block_index_start=block_index_start,
+            block_index_end=block_index_end)
         self._create_block = create_block
         self._block_size = block_size
 
@@ -136,21 +138,20 @@ class NaiveBlockAllocator(BlockAllocator):
         return len(self._free_block_indices)
 
     def get_num_total_blocks(self) -> int:
-        return len(self._all_block_indices)
+        return self.num_blocks
 
     def _allocate_new_block_id(self) -> BlockId:
         if not self._free_block_indices:
             raise BlockAllocator.NoFreeBlocksError()
 
-        block_id = next(iter(self._free_block_indices))
+        block_id = self._free_block_indices.pop()
         self._refcounter.incr(block_id)
-        self._free_block_indices.remove(block_id)
         return block_id
 
     def _free_block_id(self, block_id: BlockId) -> None:
         refcount = self._refcounter.decr(block_id)
         if refcount == 0:
-            self._free_block_indices.add(block_id)
+            self._free_block_indices.append(block_id)
 
     def get_physical_block_id(self, absolute_id: int) -> int:
         """Returns the zero-offset block id on certain block allocator
@@ -163,15 +164,7 @@ class NaiveBlockAllocator(BlockAllocator):
         Returns:
             int: The zero-offset block id on certain device.
         """
-        return sorted(self._all_block_indices).index(absolute_id)
-
-    @property
-    def refcounter(self):
-        return self._refcounter
-
-    @property
-    def all_block_ids(self) -> FrozenSet[int]:
-        return self._all_block_indices
+        return absolute_id - self.block_index_start
 
     def cow_block_if_not_appendable(self, block: Block) -> Optional[BlockId]:
         """Performs a copy-on-write operation on the given block if it is not

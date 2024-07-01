@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, List, Optional, Protocol, Tuple
+from typing import List, Optional, Protocol, Tuple
 
 from vllm.core.block.interfaces import Block, BlockAllocator
 
@@ -19,47 +19,45 @@ class RefCounterProtocol(Protocol):
 
 
 class RefCounter(RefCounterProtocol):
-    """A class for managing reference counts for a set of block indices.
+    """A class for managing reference counts for a range of block indices.
 
-    The RefCounter class maintains a dictionary that maps block indices to their
-    corresponding reference counts. It provides methods to increment, decrement,
-    and retrieve the reference count for a given block index.
+    The RefCounter class maintains a list of reference counts.
+    It provides methods to increment, decrement,
+    and retrieve the reference count for a given block index in that range.
 
     Args:
-        all_block_indices (Iterable[BlockId]): An iterable of block indices
-            to initialize the reference counter with.
+        block_index_start (BlockId): The starting block index for the reference
+            counter.
+        block_index_end (BlockId): The ending block index for the reference
+            counter.
     """
 
-    def __init__(self, all_block_indices: Iterable[BlockId]):
-        deduped = set(all_block_indices)
-        self._refcounts: Dict[BlockId,
-                              RefCount] = {index: 0
-                                           for index in deduped}
+    def __init__(self, block_index_start: BlockId, block_index_end: BlockId):
+        self.block_index_start = block_index_start
+        self.block_index_end = block_index_end
+        self._refcounts = [0] * (block_index_end - block_index_start)
 
     def incr(self, block_id: BlockId) -> RefCount:
-        assert block_id in self._refcounts
-        pre_incr_refcount = self._refcounts[block_id]
-
-        assert pre_incr_refcount >= 0
-
-        post_incr_refcount = pre_incr_refcount + 1
-        self._refcounts[block_id] = post_incr_refcount
-        return post_incr_refcount
+        assert self.block_index_start <= block_id < self.block_index_end
+        idx = block_id - self.block_index_start
+        self._refcounts[idx] += 1
+        answer = self._refcounts[idx]
+        assert answer > 0
+        return answer
 
     def decr(self, block_id: BlockId) -> RefCount:
-        assert block_id in self._refcounts
-        refcount = self._refcounts[block_id]
-
-        assert refcount > 0
-        refcount -= 1
-
-        self._refcounts[block_id] = refcount
-
-        return refcount
+        assert self.block_index_start <= block_id < self.block_index_end
+        idx = block_id - self.block_index_start
+        self._refcounts[idx] -= 1
+        answer = self._refcounts[idx]
+        assert answer >= 0
+        return answer
 
     def get(self, block_id: BlockId) -> RefCount:
-        assert block_id in self._refcounts
-        return self._refcounts[block_id]
+        assert self.block_index_start <= block_id < self.block_index_end
+        idx = block_id - self.block_index_start
+        answer = self._refcounts[idx]
+        return answer
 
     def as_readonly(self) -> "ReadOnlyRefCounter":
         return ReadOnlyRefCounter(self)
