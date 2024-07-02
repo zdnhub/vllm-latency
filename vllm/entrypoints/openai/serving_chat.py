@@ -6,6 +6,7 @@ from typing import (AsyncGenerator, AsyncIterator, Awaitable, Dict, Iterable,
 from typing import Sequence as GenericSequence
 from typing import TypedDict, Union, cast, final
 
+import jinja2
 from fastapi import Request
 from openai.types.chat import (ChatCompletionContentPartImageParam,
                                ChatCompletionContentPartTextParam)
@@ -35,6 +36,14 @@ from vllm.tracing import (contains_trace_headers, extract_trace_headers,
                           log_tracing_disabled_warning)
 from vllm.utils import random_uuid
 
+from vllm.entrypoints.openai.tool_parsers import ToolParser, MistralToolParser, Hermes2ProToolParser
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+env = Environment(
+    loader=FileSystemLoader('./'),
+    autoescape=select_autoescape()
+)
+
 logger = init_logger(__name__)
 
 
@@ -59,7 +68,10 @@ class OpenAIServingChat(OpenAIServing):
                  served_model_names: List[str],
                  response_role: str,
                  lora_modules: Optional[List[LoRAModulePath]] = None,
-                 chat_template: Optional[str] = None):
+                 chat_template: Optional[str] = None,
+                 enable_auto_tools: Optional[bool] = False,
+                 tool_parser: Optional[str] = None
+                 ):
         super().__init__(engine=engine,
                          model_config=model_config,
                          served_model_names=served_model_names,
@@ -67,6 +79,19 @@ class OpenAIServingChat(OpenAIServing):
 
         self.response_role = response_role
         self._load_chat_template(chat_template)
+
+        # set up tool use
+        self.enable_auto_tools: bool = enable_auto_tools
+
+        if self.enable_auto_tools and not tool_parser:
+            raise TypeError('Error: --enable-auto-tool-choice requires --tool-choice-parser')
+
+        if tool_parser == 'mistral':
+            self.tool_parser: ToolParser = MistralToolParser()
+        elif tool_parser == 'hermes':
+            self.tool_parser: ToolParser = Hermes2ProToolParser()
+        else:
+            raise ValueError(f'Invalid tool parser value {tool_parser}!')
 
     def _load_chat_template(self, chat_template: Optional[str]):
         tokenizer = self.tokenizer
@@ -218,14 +243,25 @@ class OpenAIServingChat(OpenAIServing):
                 conversation.extend(chat_parsed_result.messages)
                 image_futures.extend(chat_parsed_result.image_futures)
 
+            tools = None
+            if self.enable_auto_tools and request.tools:
+                tools = [tool.model_dump() for tool in request.tools]
+
+            print()
+            print('using tools', tools)
+            print('add generation prompt? ', request.add_generation_prompt)
             prompt = self.tokenizer.apply_chat_template(
                 conversation=conversation,
                 tokenize=False,
                 add_generation_prompt=request.add_generation_prompt,
+                tools=tools
             )
+
+            print('fully tokenized prompt:', prompt)
         except Exception as e:
             logger.error("Error in applying chat template from request: %s", e)
             return self.create_error_response(str(e))
+
 
         # Fetch image data
         image_data: Optional[ImagePixelData] = None
@@ -481,8 +517,11 @@ class OpenAIServingChat(OpenAIServing):
         yield "data: [DONE]\n\n"
 
     async def chat_completion_full_generator(
-        self, request: ChatCompletionRequest, raw_request: Optional[Request],
-        result_generator: AsyncIterator[RequestOutput], request_id: str,
+        self,
+        request: ChatCompletionRequest,
+        raw_request: Optional[Request],
+        result_generator: AsyncIterator[RequestOutput],
+        request_id: str,
         conversation: List[ConversationMessage]
     ) -> Union[ErrorResponse, ChatCompletionResponse]:
 
@@ -515,8 +554,10 @@ class OpenAIServingChat(OpenAIServing):
             else:
                 logprobs = None
 
+            # if the reqeust uses tools and specified a tool choice
             if request.tool_choice and type(
                     request.tool_choice) is ChatCompletionNamedToolChoiceParam:
+
                 message = ChatMessage(
                     role=role,
                     content="",
@@ -525,7 +566,16 @@ class OpenAIServingChat(OpenAIServing):
                             name=request.tool_choice.function.name,
                             arguments=output.text))
                     ])
+
+            # if the request doesn't use tool choice OR specifies to not use a tool
             elif not request.tool_choice or request.tool_choice == "none":
+
+                message = ChatMessage(role=role, content=output.text)
+
+            # handle when there are tools and tool choice is auto
+            elif request.tools and (request.tool_choice == "auto" or request.tool_choice is None):
+
+                # FOR NOW make it a chat message; we will have to detect the type to make it later.
                 message = ChatMessage(role=role, content=output.text)
 
             choice_data = ChatCompletionResponseChoice(

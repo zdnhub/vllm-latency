@@ -148,8 +148,15 @@ class ChatCompletionRequest(OpenAIBaseModel):
     temperature: Optional[float] = 0.7
     top_p: Optional[float] = 1.0
     tools: Optional[List[ChatCompletionToolsParam]] = None
-    tool_choice: Optional[Union[Literal["none"],
-                                ChatCompletionNamedToolChoiceParam]] = "none"
+    tool_choice: Optional[
+        Union[
+            Union[
+                Literal["none"],
+                Literal["auto"]
+            ],
+            ChatCompletionNamedToolChoiceParam
+        ]
+    ] = "none"
     user: Optional[str] = None
 
     # doc: begin-chat-completion-sampling-params
@@ -304,21 +311,56 @@ class ChatCompletionRequest(OpenAIBaseModel):
                 "You can only use one kind of guided decoding "
                 "('guided_json', 'guided_regex' or 'guided_choice').")
         # you can only either use guided decoding or tools, not both
-        if guide_count > 1 and "tool_choice" in data and data[
-                "tool_choice"] != "none":
+        if (guide_count > 1 and "tool_choice" in data and data[
+                "tool_choice"] != "none" and data["tool_choice"] != "auto"):
             raise ValueError(
                 "You can only either use guided decoding or tools, not both.")
         return data
 
     @model_validator(mode="before")
     @classmethod
-    def check_tool_choice(cls, data):
-        if "tool_choice" in data and data["tool_choice"] != "none":
-            if not isinstance(data["tool_choice"], dict):
-                raise ValueError("Currently only named tools are supported.")
+    def check_tool_usage(cls, data):
+        print("DATA", data)
+
+        if "tool_choice" in data:
+
+            # ensure that if "tool choice" is specified, tools are present
             if "tools" not in data or data["tools"] is None:
+                raise ValueError("When using `tool_choice`, `tools` must be set.")
+
+
+            # make sure that tool choice is either a named tool OR that it's set to "auto"
+            if data["tool_choice"] != "auto" and not isinstance(data["tool_choice"], dict):
                 raise ValueError(
-                    "When using `tool_choice`, `tools` must be set.")
+                    "`tool_choice` must either be a named tool or \"auto\". `tool_choice=\"none\" is not supported.")
+
+            # ensure that if "tool_choice" is specified as an object, it matches a valid tool
+            if isinstance(data["tool_choice"], dict):
+                valid_tool = False
+                specified_function = data["tool_choice"]["function"]
+                if not specified_function:
+                    return ValueError(
+                        'Incorrectly formatted `tool_choice`. Should be like ' +
+                        '`{"type": "function", "function": {"name": "my_function"}}`'
+                    )
+                specified_function_name = specified_function["name"]
+                if not specified_function_name:
+                    return ValueError(
+                        'Incorrectly formatted `tool_choice`. Should be like ' +
+                        '`{"type": "function", "function": {"name": "my_function"}}`'
+                    )
+                for tool in data['tools']:
+                    if tool["function"]["name"] == specified_function_name:
+                        valid_tool = True
+                        break
+                if not valid_tool:
+                    return ValueError("The tool specified in `tool_choice` does not match any of the specified `tools`")
+
+        # per OpenAI spec, make sure that tool_choice defaults to "auto" when tools are specified
+        elif "tools" in data and "tool_choice" not in data:
+            data["tool_choice"] = "auto"
+
+        # TODO validate tools
         return data
 
     @model_validator(mode="before")
@@ -594,7 +636,7 @@ class EmbeddingResponse(BaseModel):
 
 class FunctionCall(OpenAIBaseModel):
     name: str
-    arguments: str
+    arguments: str | Dict
 
 
 class ToolCall(OpenAIBaseModel):
