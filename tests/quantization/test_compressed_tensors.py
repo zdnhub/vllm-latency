@@ -122,3 +122,11 @@ def test_compressed_tensors_w4a16_marlin24(vllm_runner):
         sampling_params = SamplingParams()
         output = llm.generate("Hello world!", sampling_params=sampling_params)
         assert output
+
+
+def test_compressed_tensors_kv_cache(vllm_runner):
+    model_path = "nm-testing/TinyLlama-1.1B-compressed-tensors-kv-cache-scheme"
+    with vllm_runner(model_path) as llm:
+        sampling_params = SamplingParams()
+        output = llm.generate("Hello world!", sampling_params=sampling_params)
+        assert output
