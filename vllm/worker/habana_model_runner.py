@@ -19,8 +19,8 @@ import torch
 
 from vllm.attention import AttentionMetadata, get_attn_backend
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
-                         ModelConfig, ParallelConfig, SchedulerConfig,
-                         MultiModalConfig)
+                         ModelConfig, MultiModalConfig, ParallelConfig,
+                         SchedulerConfig)
 from vllm.distributed.parallel_state import get_world_group
 from vllm.logger import init_logger
 from vllm.lora.layers import LoRAMapping
