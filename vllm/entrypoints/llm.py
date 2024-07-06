@@ -140,13 +140,15 @@ class LLM:
 
     def generate(
         self,
-        prompts: Optional[Union[str, List[str]]] = None,
+        prompts: Optional[Union[str, List[str], List[Dict[str, str]],
+                                List[List[Dict[str, str]]]]] = None,
         sampling_params: Optional[Union[SamplingParams,
                                         List[SamplingParams]]] = None,
         prompt_token_ids: Optional[List[List[int]]] = None,
         use_tqdm: bool = True,
         lora_request: Optional[LoRARequest] = None,
         multi_modal_data: Optional[MultiModalData] = None,
+        chat_template: Optional[str] = None,
     ) -> List[RequestOutput]:
         """Generates the completions for the input prompts.
 
@@ -155,7 +157,9 @@ class LLM:
         into a single list and pass it to this method.
 
         Args:
-            prompts: A list of prompts to generate completions for.
+            prompts: A list of prompts to generate completions for. If a list 
+              of dictionaries are passed, it is treated as chat messages. 
+              Each message is a list of dictionaries with 'role' and 'content' keys.
             sampling_params: The sampling parameters for text generation. If
                 None, we use the default sampling parameters. 
                 When it is a single value, it is applied to every prompt. 
@@ -166,6 +170,8 @@ class LLM:
             use_tqdm: Whether to use tqdm to display the progress bar.
             lora_request: LoRA request to use for generation, if any.
             multi_modal_data: Multi modal data.
+            chat_template: The template to use for structuring the chat.
+              If not provided, the model's default chat template will be used.
 
         Returns:
             A list of `RequestOutput` objects containing the
@@ -176,12 +182,8 @@ class LLM:
             sampling_params = SamplingParams()
 
         requests_data = self._validate_and_prepare_requests(
-            prompts,
-            sampling_params,
-            prompt_token_ids,
-            lora_request,
-            multi_modal_data,
-        )
+            prompts, sampling_params, prompt_token_ids, lora_request,
+            multi_modal_data, chat_template)
 
         # Add requests to the engine and run the engine
         for request_data in requests_data:
@@ -225,32 +227,11 @@ class LLM:
             responses in the same order as the input messages.
         """
 
-        tokenizer = self.get_tokenizer()
-
-        prompts = messages if isinstance(messages, str) or isinstance(
-            messages[0], str) else None
-
-        if isinstance(messages[0], list):
-            # Convert messages to prompts
-            prompts = [
-                tokenizer.apply_chat_template(message,
-                                              tokenize=False,
-                                              add_generation_template=True,
-                                              chat_template=chat_template)
-                for message in messages
-            ]
-
-        elif isinstance(messages[0], dict):
-            prompts = tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_template=True,
-                chat_template=chat_template)
-
-        return self.generate(prompts,
+        return self.generate(messages,
                              sampling_params,
                              use_tqdm=use_tqdm,
-                             lora_request=lora_request)
+                             lora_request=lora_request,
+                             chat_template=chat_template)
 
     def encode(
         self,
@@ -309,6 +290,7 @@ class LLM:
         prompt_token_ids: Optional[List[List[int]]] = None,
         lora_request: Optional[LoRARequest] = None,
         multi_modal_data: Optional[MultiModalData] = None,
+        chat_template: Optional[str] = None,
     ) -> List[dict]:
         """Validates and prepares request data for adding to the engine.
 
@@ -325,6 +307,19 @@ class LLM:
         if isinstance(prompts, str):
             # Convert a single prompt to a list.
             prompts = [prompts]
+        elif isinstance(prompts[0], dict):
+            # Apply chat templates for chat inputs.
+            tokenizer = self.get_tokenizer()
+            prompts = tokenizer.apply_chat_template(
+                prompts, tokenize=False, add_generation_template=True)
+        elif isinstance(prompts[0], list):
+            tokenizer = self.get_tokenizer()
+            prompts = [
+                tokenizer.apply_chat_template(prompt,
+                                              tokenize=False,
+                                              add_generation_template=True)
+                for prompt in prompts
+            ]
         if (prompts is not None and prompt_token_ids is not None
                 and len(prompts) != len(prompt_token_ids)):
             raise ValueError("The lengths of prompts and prompt_token_ids "
