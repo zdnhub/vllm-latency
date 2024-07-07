@@ -482,7 +482,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
                     else:
                         block_table = computed_block_nums
                 elif (self.scheduler_config.chunked_prefill_enabled
-                      or not is_prompt):
+                      # multi-query verify for speculative decoding
+                      or context_len != 0 or not is_prompt):
                     if seq_group_metadata.block_tables is not None:
                         # chunked prefill or decode
                         block_table = seq_group_metadata.block_tables[seq_id]
