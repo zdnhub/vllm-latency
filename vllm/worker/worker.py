@@ -22,6 +22,7 @@ from vllm.sequence import ExecuteModelRequest
 from vllm.worker.cache_engine import CacheEngine
 from vllm.worker.embedding_model_runner import EmbeddingModelRunner
 from vllm.worker.model_runner import GPUModelRunnerBase, ModelRunner
+from vllm.worker.simple_model_runner import SimpleModelRunner
 from vllm.worker.worker_base import LocalOrDistributedWorkerBase, WorkerInput
 
 
@@ -87,6 +88,8 @@ class Worker(LocalOrDistributedWorkerBase):
             ModelRunnerClass = model_runner_cls
         elif self.model_config.embedding_mode:
             ModelRunnerClass = EmbeddingModelRunner
+        elif self.model_config.simple_mode:
+            ModelRunnerClass = SimpleModelRunner
         self.model_runner: GPUModelRunnerBase = ModelRunnerClass(
             model_config,
             parallel_config,

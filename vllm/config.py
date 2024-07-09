@@ -27,6 +27,7 @@ logger = init_logger(__name__)
 
 _GB = 1 << 30
 _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS = 32768
+_SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS = 32768
 
 _PP_SUPPORTED_MODELS = [
     "AquilaModel",
@@ -177,6 +178,7 @@ class ModelConfig:
         if not self.skip_tokenizer_init:
             self._verify_tokenizer_mode()
         self._verify_embedding_mode()
+        self._verify_simple_mode()
         self._verify_quantization()
         self._verify_cuda_graph()
 
@@ -192,6 +194,11 @@ class ModelConfig:
         architectures = getattr(self.hf_config, "architectures", [])
         self.embedding_mode = any(
             ModelRegistry.is_embedding_model(arch) for arch in architectures)
+
+    def _verify_simple_mode(self) -> None:
+        architectures = getattr(self.hf_config, "architectures", [])
+        self.simple_mode = any(
+            ModelRegistry.is_simple_model(arch) for arch in architectures)
 
     def _parse_quant_hf_config(self):
         quant_cfg = getattr(self.hf_config, "quantization_config", None)
@@ -772,6 +779,7 @@ class SchedulerConfig:
         enable_chunked_prefill: If True, prefill requests can be chunked based
             on the remaining max_num_batched_tokens.
         embedding_mode: Whether the running model is for embedding.
+        simple_mode: Whether the running model is non-[decoder,embedding] model.
         preemption_mode: Whether to perform preemption by swapping or 
             recomputation. If not specified, we determine the mode as follows:
             We use recomputation by default since it incurs lower overhead than
@@ -789,6 +797,7 @@ class SchedulerConfig:
                  delay_factor: float = 0.0,
                  enable_chunked_prefill: bool = False,
                  embedding_mode: Optional[bool] = False,
+                 simple_mode: Optional[bool] = False,
                  preemption_mode: Optional[str] = None) -> None:
         if max_num_batched_tokens is not None:
             self.max_num_batched_tokens = max_num_batched_tokens
@@ -801,6 +810,11 @@ class SchedulerConfig:
                 # For embedding, choose specific value for higher throughput
                 self.max_num_batched_tokens = max(
                     max_model_len, _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS)
+            elif simple_mode:
+                # For non-[decoder,embedding] model, choose specific value
+                # for higher throughput
+                self.max_num_batched_tokens = max(
+                    max_model_len, _SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS)
             else:
                 # If max_model_len is too short, use 2048 as the default value
                 # for higher throughput.
@@ -817,6 +831,7 @@ class SchedulerConfig:
         self.delay_factor = delay_factor
         self.chunked_prefill_enabled = enable_chunked_prefill
         self.embedding_mode = embedding_mode
+        self.simple_mode = simple_mode
         self.preemption_mode = preemption_mode
         self._verify_args()
 

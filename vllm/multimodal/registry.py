@@ -8,6 +8,7 @@ from vllm.logger import init_logger
 
 from .base import (MultiModalDataDict, MultiModalInputMapper, MultiModalInputs,
                    MultiModalPlugin, MultiModalTokensCalc)
+from .bge import BgePlugin
 from .image import ImagePlugin
 
 logger = init_logger(__name__)
@@ -19,7 +20,7 @@ class MultiModalRegistry:
     :class:`~vllm.multimodal.MultiModalPlugin` for each modality.
     """
 
-    DEFAULT_PLUGINS = (ImagePlugin(), )
+    DEFAULT_PLUGINS = (ImagePlugin(), BgePlugin())
 
     def __init__(
             self,
@@ -51,6 +52,17 @@ class MultiModalRegistry:
 
         msg = f"Unknown multi-modal data type: {data_type_key}"
         raise NotImplementedError(msg)
+
+    def register_bge_input_mapper(
+        self,
+        mapper: Optional[MultiModalInputMapper] = None,
+    ):
+        """
+        Register an input mapper for image feature data to a model class.
+
+        See :meth:`MultiModalPlugin.register_input_mapper` for more details.
+        """
+        return self.register_input_mapper("bgedata", mapper)
 
     def register_input_mapper(
         self,

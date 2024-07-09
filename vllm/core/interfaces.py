@@ -40,6 +40,11 @@ class BlockSpaceManager(ABC):
                 EmbeddingModelBlockSpaceManager)
             return EmbeddingModelBlockSpaceManager
 
+        if version == "simple":
+            from vllm.core.simple_model_block_manager import (
+                SimpleModelBlockSpaceManager)
+            return SimpleModelBlockSpaceManager
+
         raise ValueError(f"Unknown version {version=}")
 
     @abstractmethod

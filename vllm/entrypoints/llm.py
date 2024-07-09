@@ -290,7 +290,8 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if self.llm_engine.model_config.embedding_mode:
+        if self.llm_engine.model_config.embedding_mode or \
+            self.llm_engine.model_config.simple_mode:
             raise ValueError(
                 "LLM.generate() is only supported for generation models "
                 "(XForCausalLM).")
@@ -432,10 +433,10 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if not self.llm_engine.model_config.embedding_mode:
-            raise ValueError(
-                "LLM.encode() is only supported for embedding models (XModel)."
-            )
+        if not self.llm_engine.model_config.embedding_mode and \
+            not self.llm_engine.model_config.simple_mode:
+            raise ValueError("LLM.encode() is only supported for embedding or "
+                             "simple models (XModel).")
 
         if prompt_token_ids is not None:
             inputs = self._convert_v1_inputs(

@@ -810,6 +810,7 @@ class EngineArgs:
             delay_factor=self.scheduler_delay_factor,
             enable_chunked_prefill=self.enable_chunked_prefill,
             embedding_mode=model_config.embedding_mode,
+            simple_mode=model_config.simple_mode,
             preemption_mode=self.preemption_mode,
         )
         lora_config = LoRAConfig(

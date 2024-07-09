@@ -79,7 +79,12 @@ _EMBEDDING_MODELS = {
     "MistralModel": ("llama_embedding", "LlamaEmbeddingModel"),
 }
 
-_MODELS = {**_GENERATION_MODELS, **_EMBEDDING_MODELS}
+_SIMPLE_MODELS = {
+    "XLMRobertaForSequenceClassification":
+    ("xlmroberta", "XLMRobertaForSequenceClassification"),
+}
+
+_MODELS = {**_GENERATION_MODELS, **_EMBEDDING_MODELS, **_SIMPLE_MODELS}
 
 # Architecture -> type.
 # out of tree models
@@ -156,6 +161,10 @@ class ModelRegistry:
     @staticmethod
     def is_embedding_model(model_arch: str) -> bool:
         return model_arch in _EMBEDDING_MODELS
+
+    @staticmethod
+    def is_simple_model(model_arch: str) -> bool:
+        return model_arch in _SIMPLE_MODELS
 
 
 __all__ = [
