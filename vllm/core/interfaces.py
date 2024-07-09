@@ -40,6 +40,10 @@ class BlockSpaceManager(ABC):
                 EmbeddingModelBlockSpaceManager)
             return EmbeddingModelBlockSpaceManager
 
+        if version == "vmm":  # new add for vmm
+            from vllm.core.block_manager_vmm import BlockSpaceManagerVMM
+            return BlockSpaceManagerVMM
+
         raise ValueError(f"Unknown version {version=}")
 
     @abstractmethod
