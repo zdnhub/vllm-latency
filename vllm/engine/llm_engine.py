@@ -480,7 +480,7 @@ class LLMEngine:
 
         return self.tokenizer.get_lora_tokenizer(lora_request).eos_token_id
 
-    def _add_processed_request(
+    def _create_sequence_group(
         self,
         request_id: str,
         processed_inputs: LLMInputs,
@@ -488,7 +488,7 @@ class LLMEngine:
         arrival_time: float,
         lora_request: Optional[LoRARequest],
         trace_headers: Optional[Dict[str, str]] = None,
-    ) -> None:
+    ) -> SequenceGroup:
         # Create the sequences.
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
@@ -519,13 +519,7 @@ class LLMEngine:
             raise ValueError(
                 "Either SamplingParams or PoolingParams must be provided.")
 
-        # Add the sequence group to the scheduler with least unfinished seqs.
-        costs = [
-            scheduler.get_num_unfinished_seq_groups()
-            for scheduler in self.scheduler
-        ]
-        min_cost_scheduler = self.scheduler[costs.index(min(costs))]
-        min_cost_scheduler.add_seq_group(seq_group)
+        return seq_group
 
     def stop_remote_worker_execution_loop(self) -> None:
         self.model_executor.stop_remote_worker_execution_loop()
@@ -616,7 +610,7 @@ class LLMEngine:
                                                      inputs=inputs,
                                                      lora_request=lora_request)
 
-        self._add_processed_request(
+        seq_group = self._create_sequence_group(
             request_id=request_id,
             processed_inputs=processed_inputs,
             params=params,
@@ -624,6 +618,18 @@ class LLMEngine:
             lora_request=lora_request,
             trace_headers=trace_headers,
         )
+
+        if isinstance(params, SamplingParams):
+            for seq in seq_group.get_seqs():
+                seq.data.logits_processors = params.get_logits_processors()
+
+        # Add the sequence group to the scheduler with least unfinished seqs.
+        costs = [
+            scheduler.get_num_unfinished_seq_groups()
+            for scheduler in self.scheduler
+        ]
+        min_cost_scheduler = self.scheduler[costs.index(min(costs))]
+        min_cost_scheduler.add_seq_group(seq_group)
 
     def _create_sequence_group_with_sampling(
         self,

@@ -10,7 +10,7 @@ import torch
 
 from vllm.lora.request import LoRARequest
 from vllm.pooling_params import PoolingParams
-from vllm.sampling_params import SamplingParams
+from vllm.sampling_params import LogitsProcessor, SamplingParams
 
 if TYPE_CHECKING:
     from vllm.inputs import LLMInputs
@@ -125,6 +125,7 @@ class SequenceData:
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
         self._stage: SequenceStage = SequenceStage.PREFILL
+        self.logits_processors: List[LogitsProcessor] = []
 
         self._update_cached_all_tokens()
 

@@ -303,7 +303,7 @@ class _AsyncLLMEngine(LLMEngine):
         processed_inputs = await self.process_model_inputs_async(
             request_id=request_id, inputs=inputs, lora_request=lora_request)
 
-        self._add_processed_request(
+        seq_group = self._create_sequence_group(
             request_id=request_id,
             processed_inputs=processed_inputs,
             params=params,
@@ -311,6 +311,19 @@ class _AsyncLLMEngine(LLMEngine):
             lora_request=lora_request,
             trace_headers=trace_headers,
         )
+
+        if isinstance(params, SamplingParams):
+            for seq in seq_group.get_seqs():
+                seq.data.logits_processors = \
+                    await params.get_logits_processors_async()
+
+        # Add the sequence group to the scheduler with least unfinished seqs.
+        costs = [
+            scheduler.get_num_unfinished_seq_groups()
+            for scheduler in self.scheduler
+        ]
+        min_cost_scheduler = self.scheduler[costs.index(min(costs))]
+        min_cost_scheduler.add_seq_group(seq_group)
 
     async def check_health_async(self) -> None:
         if self.tokenizer:
