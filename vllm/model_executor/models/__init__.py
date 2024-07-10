@@ -101,7 +101,7 @@ class ModelMode(enum.Enum):
     SIMPLE = enum.auto()
 
     @staticmethod
-    def get_model_runner_cls(model_mode):
+    def get_model_runner_cls(model_mode: "ModelMode"):
 
         if model_mode == ModelMode.EMBEDDING:
             from vllm.worker.embedding_model_runner import EmbeddingModelRunner
@@ -112,7 +112,7 @@ class ModelMode(enum.Enum):
             return SimpleModelRunner
 
     @staticmethod
-    def get_block_space_manager_impl(use_v2_block_manager, model_mode):
+    def get_block_space_manager_impl(use_v2_block_manager: bool, model_mode: "ModelMode"):
 
         if use_v2_block_manager:
             from vllm.core.block_manager_v2 import BlockSpaceManagerV2
@@ -205,7 +205,7 @@ class ModelRegistry:
         _OOT_MODELS[model_arch] = model_cls
 
     @staticmethod
-    def get_model_mode(architectures: List) -> ModelMode:
+    def get_model_mode(architectures: List[str]) -> ModelMode:
 
         if any(arch in _EMBEDDING_MODELS for arch in architectures):
             return ModelMode.EMBEDDING
@@ -216,10 +216,10 @@ class ModelRegistry:
         return ModelMode.DECODER
 
     @staticmethod
-    def need_initialize_kv_caches(modelmode: ModelMode) -> bool:
-        if modelmode == ModelMode.EMBEDDING:
+    def need_initialize_kv_caches(model_mode: ModelMode) -> bool:
+        if model_mode == ModelMode.EMBEDDING:
             return False
-        if modelmode == ModelMode.SIMPLE:
+        if model_mode == ModelMode.SIMPLE:
             return False
         return True
 

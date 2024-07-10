@@ -155,7 +155,8 @@ class ModelConfig:
                                     code_revision, rope_scaling, rope_theta)
         self.hf_text_config = get_hf_text_config(self.hf_config)
         self.dtype = _get_and_verify_dtype(self.hf_text_config, dtype)
-        self.model_mode = ModelMode.DECODER
+        architectures = getattr(self.hf_config, "architectures", [])
+        self.model_mode = ModelRegistry.get_model_mode(architectures)
 
         if (not self.disable_sliding_window
                 and self.hf_text_config.model_type == "gemma2"
@@ -178,7 +179,6 @@ class ModelConfig:
 
         if not self.skip_tokenizer_init:
             self._verify_tokenizer_mode()
-        self._verify_model_mode()
         self._verify_quantization()
         self._verify_cuda_graph()
 
@@ -189,10 +189,6 @@ class ModelConfig:
                 f"Unknown tokenizer mode: {self.tokenizer_mode}. Must be "
                 "either 'auto' or 'slow'.")
         self.tokenizer_mode = tokenizer_mode
-
-    def _verify_model_mode(self) -> None:
-        architectures = getattr(self.hf_config, "architectures", [])
-        self.model_mode = ModelRegistry.get_model_mode(architectures)
 
     def _parse_quant_hf_config(self):
         quant_cfg = getattr(self.hf_config, "quantization_config", None)
