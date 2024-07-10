@@ -791,7 +791,8 @@ class LLMEngine:
         elif model_mode == ModelMode.SIMPLE:
             seq_group.result = outputs[0].result
         else:
-            raise ValueError("Only support ModelMode.EMBEDDING Or ModelMode.SIMPLE")
+            raise ValueError(
+                "Only support ModelMode.EMBEDDING Or ModelMode.SIMPLE")
 
         for seq in seq_group.get_seqs():
             seq.status = SequenceStatus.FINISHED_STOPPED
