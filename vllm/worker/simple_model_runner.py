@@ -4,7 +4,7 @@ import torch
 
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, MultiModalConfig, ParallelConfig,
-                         SchedulerConfig)
+                         PromptAdapterConfig, SchedulerConfig)
 from vllm.logger import init_logger
 from vllm.sequence import (IntermediateTensors, SequenceGroupMetadata,
                            SimpleOutput)
@@ -27,6 +27,7 @@ class SimpleModelRunner(GPUModelRunnerBase[ModelInputForGPU]):
         lora_config: Optional[LoRAConfig],
         kv_cache_dtype: Optional[str] = "auto",
         is_driver_worker: bool = False,
+        prompt_adapter_config: Optional[PromptAdapterConfig] = None,
         multimodal_config: Optional[MultiModalConfig] = None,
     ):
         super().__init__(model_config,
