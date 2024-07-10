@@ -804,7 +804,6 @@ class SchedulerConfig:
     """
 
     def __init__(self,
-                 model_mode: ModelMode,
                  max_num_batched_tokens: Optional[int],
                  max_num_seqs: int,
                  max_model_len: int,
@@ -812,7 +811,8 @@ class SchedulerConfig:
                  num_lookahead_slots: int = 0,
                  delay_factor: float = 0.0,
                  enable_chunked_prefill: bool = False,
-                 preemption_mode: Optional[str] = None) -> None:
+                 preemption_mode: Optional[str] = None,
+                 model_mode: ModelMode = ModelMode.DECODER) -> None:
         if max_num_batched_tokens is not None:
             self.max_num_batched_tokens = max_num_batched_tokens
         else:
