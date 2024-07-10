@@ -27,6 +27,7 @@ from vllm.executor.ray_utils import initialize_ray_cluster
 from vllm.inputs import INPUT_REGISTRY, LLMInputs, PromptInputs
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
+from vllm.model_executor.models import ModelRegistry
 from vllm.outputs import (EmbeddingRequestOutput, RequestOutput,
                           RequestOutputFactory, SimpleRequestOutput)
 from vllm.pooling_params import PoolingParams
@@ -260,9 +261,8 @@ class LLMEngine:
             prompt_adapter_config=prompt_adapter_config,
         )
 
-        if self.model_config.model_mode not in [
-                ModelMode.EMBEDDING, ModelMode.SIMPLE
-        ]:
+        if ModelRegistry.need_initialize_kv_caches(
+                self.model_config.model_mode):
             self._initialize_kv_caches()
 
         # If usage stat is enabled, collect relevant info.

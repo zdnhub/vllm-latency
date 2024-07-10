@@ -184,6 +184,14 @@ class ModelRegistry:
 
         return ModelMode.DECODER
 
+    @staticmethod
+    def need_initialize_kv_caches(modelmode: ModelMode) -> bool:
+        if modelmode == ModelMode.EMBEDDING:
+            return False
+        if modelmode == ModelMode.SIMPLE:
+            return False
+        return True
+
 
 __all__ = [
     "ModelRegistry",
