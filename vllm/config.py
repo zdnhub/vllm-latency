@@ -8,7 +8,7 @@ from transformers import PretrainedConfig
 
 from vllm.logger import init_logger
 from vllm.model_executor.layers.quantization import QUANTIZATION_METHODS
-from vllm.model_executor.models import ModelRegistry
+from vllm.model_executor.models import ModelMode, ModelRegistry
 from vllm.tracing import is_otel_installed
 from vllm.transformers_utils.config import get_config, get_hf_text_config
 from vllm.utils import (cuda_device_count_stateless, get_cpu_memory, is_cpu,
@@ -41,19 +41,6 @@ _PP_SUPPORTED_MODELS = [
     "GPT2LMHeadModel",
     "MixtralForCausalLM",
 ]
-
-
-class ModelMode(enum.Enum):
-    """
-    1. DECODER: decoder model
-    2. ENCODER: encoder model
-    3. EMBEDDING: embedding model
-    4. SIMPLE: simple model, like XLMRoberta*
-    """
-    DECODER = enum.auto()
-    ENCODER = enum.auto()
-    EMBEDDING = enum.auto()
-    SIMPLE = enum.auto()
 
 
 class ModelConfig:
@@ -191,8 +178,7 @@ class ModelConfig:
 
         if not self.skip_tokenizer_init:
             self._verify_tokenizer_mode()
-        self._verify_embedding_mode()
-        self._verify_simple_mode()
+        self._verify_model_mode()
         self._verify_quantization()
         self._verify_cuda_graph()
 
@@ -204,17 +190,9 @@ class ModelConfig:
                 "either 'auto' or 'slow'.")
         self.tokenizer_mode = tokenizer_mode
 
-    def _verify_embedding_mode(self) -> None:
+    def _verify_model_mode(self) -> None:
         architectures = getattr(self.hf_config, "architectures", [])
-        if any(
-                ModelRegistry.is_embedding_model(arch)
-                for arch in architectures):
-            self.model_mode = ModelMode.EMBEDDING
-
-    def _verify_simple_mode(self) -> None:
-        architectures = getattr(self.hf_config, "architectures", [])
-        if any(ModelRegistry.is_simple_model(arch) for arch in architectures):
-            self.model_mode = ModelMode.SIMPLE
+        self.model_mode = ModelRegistry.get_model_mode(architectures)
 
     def _parse_quant_hf_config(self):
         quant_cfg = getattr(self.hf_config, "quantization_config", None)

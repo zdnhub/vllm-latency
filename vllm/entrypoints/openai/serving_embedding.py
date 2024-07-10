@@ -166,7 +166,7 @@ class OpenAIServingEmbedding(OpenAIServing):
         return response
 
     def _check_embedding_mode(self, model_mode: ModelMode):
-        if model_mode != ModelMode.EMBEDDING:
+        if model_mode is not ModelMode.EMBEDDING:
             logger.warning(
                 "embedding_mode is False. Embedding API will not work.")
         else:

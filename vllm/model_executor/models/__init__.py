@@ -1,5 +1,6 @@
 import functools
 import importlib
+import enum
 from typing import Dict, List, Optional, Type
 
 import torch.nn as nn
@@ -86,6 +87,20 @@ _SIMPLE_MODELS = {
 
 _MODELS = {**_GENERATION_MODELS, **_EMBEDDING_MODELS, **_SIMPLE_MODELS}
 
+
+class ModelMode(enum.Enum):
+    """
+    1. DECODER: decoder model
+    2. ENCODER: encoder model
+    3. EMBEDDING: embedding model
+    4. SIMPLE: simple model, like XLMRoberta*
+    """
+    DECODER = enum.auto()
+    ENCODER = enum.auto()
+    EMBEDDING = enum.auto()
+    SIMPLE = enum.auto()
+
+
 # Architecture -> type.
 # out of tree models
 _OOT_MODELS: Dict[str, Type[nn.Module]] = {}
@@ -159,12 +174,15 @@ class ModelRegistry:
         _OOT_MODELS[model_arch] = model_cls
 
     @staticmethod
-    def is_embedding_model(model_arch: str) -> bool:
-        return model_arch in _EMBEDDING_MODELS
+    def get_model_mode(architectures: List) -> ModelMode:
 
-    @staticmethod
-    def is_simple_model(model_arch: str) -> bool:
-        return model_arch in _SIMPLE_MODELS
+        if any(arch in _EMBEDDING_MODELS for arch in architectures):
+            return ModelMode.EMBEDDING
+
+        if any(arch in _SIMPLE_MODELS for arch in architectures):
+            return ModelMode.SIMPLE
+
+        return ModelMode.DECODER
 
 
 __all__ = [

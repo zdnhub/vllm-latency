@@ -292,9 +292,7 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if self.llm_engine.model_config.model_mode in [
-                ModelMode.EMBEDDING, ModelMode.SIMPLE
-        ]:
+        if self.llm_engine.model_config.model_mode is not ModelMode.DECODER:
             raise ValueError(
                 "LLM.generate() is only supported for generation models "
                 "(XForCausalLM).")
@@ -437,7 +435,7 @@ class LLM:
             instead pass them via the ``inputs`` parameter.
         """
 
-        if self.llm_engine.model_config.model_mode != ModelMode.EMBEDDING:
+        if self.llm_engine.model_config.model_mode is not ModelMode.EMBEDDING:
             raise ValueError(
                 "LLM.encode() is only supported for embedding models (XModel)."
             )
