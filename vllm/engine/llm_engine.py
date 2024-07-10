@@ -11,7 +11,7 @@ import vllm.envs as envs
 from vllm.config import (CacheConfig, DecodingConfig, DeviceConfig,
                          EngineConfig, LoadConfig, LoRAConfig, ModelConfig,
                          MultiModalConfig, ObservabilityConfig, ParallelConfig,
-                         PromptAdapterConfig, SchedulerConfig,
+                         PromptAdapterConfig, SchedulerConfig, ModelMode,
                          SpeculativeConfig)
 from vllm.core.scheduler import (ScheduledSequenceGroup, Scheduler,
                                  SchedulerOutputs)
@@ -262,8 +262,9 @@ class LLMEngine:
             prompt_adapter_config=prompt_adapter_config,
         )
 
-        if not self.model_config.embedding_mode and \
-            not self.model_config.simple_mode:
+        if self.model_config.model_mode not in [
+                ModelMode.EMBEDDING, ModelMode.SIMPLE
+        ]:
             self._initialize_kv_caches()
 
         # If usage stat is enabled, collect relevant info.
@@ -783,14 +784,14 @@ class LLMEngine:
         seq_group: SequenceGroup,
         outputs: Union[List[EmbeddingSequenceGroupOutput],
                        List[SimpleSequenceGroupOutput]],
-        mode: str,
+        model_mode: ModelMode,
     ) -> None:
-        if mode == "embedding_mode":
+        if model_mode == ModelMode.EMBEDDING:
             seq_group.embeddings = outputs[0].embeddings
-        elif mode == "simple_mode":
+        elif model_mode == ModelMode.SIMPLE:
             seq_group.result = outputs[0].result
         else:
-            raise ValueError("Only support embedding_mode or simple_mode")
+            raise ValueError("Only support ModelMode.EMBEDDING Or ModelMode.SIMPLE")
 
         for seq in seq_group.get_seqs():
             seq.status = SequenceStatus.FINISHED_STOPPED
@@ -825,13 +826,13 @@ class LLMEngine:
             seq_group = scheduled_seq_group.seq_group
             seq_group.update_num_computed_tokens(
                 scheduled_seq_group.token_chunk_size)
-            if self.model_config.embedding_mode:
+            if self.model_config.model_mode == ModelMode.EMBEDDING:
                 self._process_sequence_group_outputs(seq_group, outputs,
-                                                     "embedding_mode")
+                                                     ModelMode.EMBEDDING)
                 continue
-            if self.model_config.simple_mode:
+            if self.model_config.model_mode == ModelMode.SIMPLE:
                 self._process_sequence_group_outputs(seq_group, outputs,
-                                                     "simple_mode")
+                                                     ModelMode.SIMPLE)
                 continue
 
             self.output_processor.process_prompt_logprob(seq_group, outputs)

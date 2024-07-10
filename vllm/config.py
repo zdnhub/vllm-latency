@@ -43,6 +43,19 @@ _PP_SUPPORTED_MODELS = [
 ]
 
 
+class ModelMode(enum.Enum):
+    """
+    1. DECODER: decoder model
+    2. ENCODER: encoder model
+    3. EMBEDDING: embedding model
+    4. SIMPLE: simple model, like XLMRoberta*
+    """
+    DECODER = enum.auto()
+    ENCODER = enum.auto()
+    EMBEDDING = enum.auto()
+    SIMPLE = enum.auto()
+
+
 class ModelConfig:
     """Configuration for the model.
 
@@ -155,6 +168,7 @@ class ModelConfig:
                                     code_revision, rope_scaling, rope_theta)
         self.hf_text_config = get_hf_text_config(self.hf_config)
         self.dtype = _get_and_verify_dtype(self.hf_text_config, dtype)
+        self.model_mode = ModelMode.DECODER
 
         if (not self.disable_sliding_window
                 and self.hf_text_config.model_type == "gemma2"
@@ -192,13 +206,15 @@ class ModelConfig:
 
     def _verify_embedding_mode(self) -> None:
         architectures = getattr(self.hf_config, "architectures", [])
-        self.embedding_mode = any(
-            ModelRegistry.is_embedding_model(arch) for arch in architectures)
+        if any(
+                ModelRegistry.is_embedding_model(arch)
+                for arch in architectures):
+            self.model_mode = ModelMode.EMBEDDING
 
     def _verify_simple_mode(self) -> None:
         architectures = getattr(self.hf_config, "architectures", [])
-        self.simple_mode = any(
-            ModelRegistry.is_simple_model(arch) for arch in architectures)
+        if any(ModelRegistry.is_simple_model(arch) for arch in architectures):
+            self.model_mode = ModelMode.SIMPLE
 
     def _parse_quant_hf_config(self):
         quant_cfg = getattr(self.hf_config, "quantization_config", None)
@@ -778,8 +794,7 @@ class SchedulerConfig:
             prompt latency) before scheduling next prompt.
         enable_chunked_prefill: If True, prefill requests can be chunked based
             on the remaining max_num_batched_tokens.
-        embedding_mode: Whether the running model is for embedding.
-        simple_mode: Whether the running model is non-[decoder,embedding] model.
+        model_mode: model mode, one of [DECODER, ENCODER, EMBEDDING, SIMPLE]
         preemption_mode: Whether to perform preemption by swapping or 
             recomputation. If not specified, we determine the mode as follows:
             We use recomputation by default since it incurs lower overhead than
@@ -788,17 +803,18 @@ class SchedulerConfig:
             such a case, we use swapping instead.
     """
 
-    def __init__(self,
-                 max_num_batched_tokens: Optional[int],
-                 max_num_seqs: int,
-                 max_model_len: int,
-                 use_v2_block_manager: bool = False,
-                 num_lookahead_slots: int = 0,
-                 delay_factor: float = 0.0,
-                 enable_chunked_prefill: bool = False,
-                 embedding_mode: Optional[bool] = False,
-                 simple_mode: Optional[bool] = False,
-                 preemption_mode: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        model_mode: ModelMode,
+        max_num_batched_tokens: Optional[int],
+        max_num_seqs: int,
+        max_model_len: int,
+        use_v2_block_manager: bool = False,
+        num_lookahead_slots: int = 0,
+        delay_factor: float = 0.0,
+        enable_chunked_prefill: bool = False,
+        preemption_mode: Optional[str] = None
+    ) -> None:
         if max_num_batched_tokens is not None:
             self.max_num_batched_tokens = max_num_batched_tokens
         else:
@@ -806,11 +822,11 @@ class SchedulerConfig:
                 # It is the values that have the best balance between ITL
                 # and TTFT on A100. Note it is not optimized for throughput.
                 self.max_num_batched_tokens = 512
-            elif embedding_mode:
+            elif model_mode == ModelMode.EMBEDDING:
                 # For embedding, choose specific value for higher throughput
                 self.max_num_batched_tokens = max(
                     max_model_len, _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS)
-            elif simple_mode:
+            elif model_mode == ModelMode.SIMPLE:
                 # For non-[decoder,embedding] model, choose specific value
                 # for higher throughput
                 self.max_num_batched_tokens = max(
@@ -830,8 +846,7 @@ class SchedulerConfig:
         self.num_lookahead_slots = num_lookahead_slots
         self.delay_factor = delay_factor
         self.chunked_prefill_enabled = enable_chunked_prefill
-        self.embedding_mode = embedding_mode
-        self.simple_mode = simple_mode
+        self.model_mode = model_mode
         self.preemption_mode = preemption_mode
         self._verify_args()
 

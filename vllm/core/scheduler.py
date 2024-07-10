@@ -6,7 +6,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from vllm.config import CacheConfig, LoRAConfig, SchedulerConfig
+from vllm.config import CacheConfig, LoRAConfig, ModelMode, SchedulerConfig
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.core.policy import Policy, PolicyFactory
 from vllm.logger import init_logger
@@ -279,9 +279,9 @@ class Scheduler:
         version = "v1"
         if self.scheduler_config.use_v2_block_manager:
             version = "v2"
-        if self.scheduler_config.embedding_mode:
+        if self.scheduler_config.model_mode == ModelMode.EMBEDDING:
             version = "embedding"
-        if self.scheduler_config.simple_mode:
+        if self.scheduler_config.model_mode == ModelMode.SIMPLE:
             version = "simple"
 
         BlockSpaceManagerImpl = BlockSpaceManager.get_block_space_manager_class(

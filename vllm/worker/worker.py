@@ -7,7 +7,7 @@ import torch
 import torch.distributed
 
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
-                         ModelConfig, MultiModalConfig, ParallelConfig,
+                         ModelConfig, ModelMode, MultiModalConfig, ParallelConfig,
                          PromptAdapterConfig, SchedulerConfig,
                          SpeculativeConfig)
 from vllm.distributed import (ensure_model_parallel_initialized,
@@ -86,9 +86,9 @@ class Worker(LocalOrDistributedWorkerBase):
         ModelRunnerClass: Type[GPUModelRunnerBase] = ModelRunner
         if model_runner_cls is not None:
             ModelRunnerClass = model_runner_cls
-        elif self.model_config.embedding_mode:
+        elif self.model_config.model_mode == ModelMode.EMBEDDING:
             ModelRunnerClass = EmbeddingModelRunner
-        elif self.model_config.simple_mode:
+        elif self.model_config.model_mode == ModelMode.SIMPLE:
             ModelRunnerClass = SimpleModelRunner
         self.model_runner: GPUModelRunnerBase = ModelRunnerClass(
             model_config,

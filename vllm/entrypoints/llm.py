@@ -4,6 +4,7 @@ from typing import ClassVar, List, Optional, Sequence, Union, cast, overload
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
+from vllm.config import ModelMode
 from vllm.engine.arg_utils import EngineArgs
 from vllm.engine.llm_engine import LLMEngine
 from vllm.inputs import (PromptInputs, TextPrompt, TokensPrompt,
@@ -291,8 +292,9 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if self.llm_engine.model_config.embedding_mode or \
-            self.llm_engine.model_config.simple_mode:
+        if self.llm_engine.model_config.model_mode in [
+                ModelMode.EMBEDDING, ModelMode.SIMPLE
+        ]:
             raise ValueError(
                 "LLM.generate() is only supported for generation models "
                 "(XForCausalLM).")
@@ -434,7 +436,8 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if not self.llm_engine.model_config.embedding_mode:
+
+        if self.llm_engine.model_config.model_mode != ModelMode.EMBEDDING:
             raise ValueError(
                 "LLM.encode() is only supported for embedding models (XModel)."
             )
@@ -483,7 +486,7 @@ class LLM:
         Note:
             Only ``inputs`` reserved for simple model.
         """
-        if not self.llm_engine.model_config.simple_mode:
+        if self.llm_engine.model_config.model_mode != ModelMode.SIMPLE:
             raise ValueError(
                 "LLM.process() is only supported for simple models.")
 
