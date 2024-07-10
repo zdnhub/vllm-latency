@@ -484,7 +484,7 @@ class LLM:
         Note:
             Only ``inputs`` reserved for simple model.
         """
-        if self.llm_engine.model_config.model_mode != ModelMode.SIMPLE:
+        if self.llm_engine.model_config.model_mode is not ModelMode.SIMPLE:
             raise ValueError(
                 "LLM.process() is only supported for simple models.")
 
