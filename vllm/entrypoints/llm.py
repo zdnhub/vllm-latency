@@ -468,26 +468,16 @@ class LLM:
                       "instead.")
     def process(
         self,
-        prompts: Union[Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
-                       Optional[Union[str, List[str]]]] = None,
-        pooling_params: Optional[Union[PoolingParams,
-                                       Sequence[PoolingParams]]] = None,
-        prompt_token_ids: Optional[Union[List[int], List[List[int]]]] = None,
+        inputs: Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
     ) -> List[SimpleRequestOutput]:
-        """Processing the simple models, like XLMRoberta*
-
-        This class automatically batches the given prompts, considering
-        the memory constraint. For the best performance, put all of your prompts
-        into a single list and pass it to this method.
+        """Processing the simple model, like XLMRoberta*
 
         Args:
             inputs: The inputs to the LLM. You may pass a sequence of inputs for
                 batch inference. See :class:`~vllm.inputs.PromptStrictInputs`
                 for more details about the format of each input.
-            pooling_params: The pooling parameters for pooling. If None, we
-                use the default pooling parameters.
             use_tqdm: Whether to use tqdm to display the progress bar.
             lora_request: LoRA request to use for generation, if any.
 
@@ -496,27 +486,13 @@ class LLM:
             generated simple result in the same order as the input data.
 
         Note:
-            Using ``prompts`` and ``prompt_token_ids`` as keyword parameters is
-            considered legacy and may be deprecated in the future. You should
-            instead pass them via the ``inputs`` parameter.
+            Only ``inputs`` reserved for simple model.
         """
         if not self.llm_engine.model_config.simple_mode:
             raise ValueError(
                 "LLM.process() is only supported for simple models.")
 
-        if prompt_token_ids is not None:
-            inputs = self._convert_v1_inputs(
-                prompts=cast(Optional[Union[str, List[str]]], prompts),
-                prompt_token_ids=prompt_token_ids,
-            )
-        else:
-            inputs = cast(
-                Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
-                prompts)
-
-        if pooling_params is None:
-            # Use default pooling params.
-            pooling_params = PoolingParams()
+        pooling_params = PoolingParams()
 
         self._validate_and_add_requests(
             inputs=inputs,
