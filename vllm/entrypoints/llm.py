@@ -475,7 +475,7 @@ class LLM:
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
     ) -> List[SimpleRequestOutput]:
-        """Generates the completions for the input prompts.
+        """Processing the simple models, like XLMRoberta*
 
         This class automatically batches the given prompts, considering
         the memory constraint. For the best performance, put all of your prompts
@@ -492,7 +492,7 @@ class LLM:
 
         Returns:
             A list of `SimpleRequestOutput` objects containing the
-            generated simple result in the same order as the input prompts.
+            generated simple result in the same order as the input data.
 
         Note:
             Using ``prompts`` and ``prompt_token_ids`` as keyword parameters is
