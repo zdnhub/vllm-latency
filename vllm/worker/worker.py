@@ -20,7 +20,7 @@ from vllm.platforms import current_platform
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import ExecuteModelRequest
 from vllm.worker.cache_engine import CacheEngine
-from vllm.worker.model_runner import GPUModelRunnerBase, ModelRunner
+from vllm.worker.model_runner import GPUModelRunnerBase
 from vllm.worker.worker_base import LocalOrDistributedWorkerBase, WorkerInput
 
 
@@ -81,7 +81,7 @@ class Worker(LocalOrDistributedWorkerBase):
                 not in ["medusa", "mlp_speculator"]) \
                     else {"return_hidden_states": True}
 
-        ModelRunnerClass: Type[GPUModelRunnerBase] = ModelRunner
+        #ModelRunnerClass: Type[GPUModelRunnerBase] = ModelRunner
         if model_runner_cls is not None:
             ModelRunnerClass = model_runner_cls
         else:

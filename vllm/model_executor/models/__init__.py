@@ -111,8 +111,12 @@ class ModelMode(enum.Enum):
             from vllm.worker.simple_model_runner import SimpleModelRunner
             return SimpleModelRunner
 
+        from vllm.worker.model_runner import ModelRunner
+        return ModelRunner
+
     @staticmethod
-    def get_block_space_manager_impl(use_v2_block_manager: bool, model_mode: "ModelMode"):
+    def get_block_space_manager_impl(use_v2_block_manager: bool,
+                                     model_mode: "ModelMode"):
 
         if use_v2_block_manager:
             from vllm.core.block_manager_v2 import BlockSpaceManagerV2
