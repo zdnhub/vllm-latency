@@ -139,7 +139,8 @@ class ModelMode(enum.Enum):
         return BlockSpaceManagerV1
 
     @staticmethod
-    def get_model_max_num_batched_tokens(model_mode: "ModelMode"):
+    def get_model_max_num_batched_tokens(
+            model_mode: "ModelMode") -> Optional[int]:
         if model_mode == ModelMode.EMBEDDING:
             return _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS
         if model_mode == ModelMode.SIMPLE:
