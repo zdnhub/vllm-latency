@@ -144,6 +144,7 @@ class ModelMode(enum.Enum):
             return _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS
         if model_mode == ModelMode.SIMPLE:
             return _SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS
+        return None
 
 
 # Architecture -> type.

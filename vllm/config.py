@@ -792,14 +792,19 @@ class SchedulerConfig:
                 # It is the values that have the best balance between ITL
                 # and TTFT on A100. Note it is not optimized for throughput.
                 self.max_num_batched_tokens = 512
-            elif model_mode in [ModelMode.EMBEDDING, ModelMode.SIMPLE]:
-                self.max_num_batched_tokens = max(
-                    max_model_len,
-                    ModelMode.get_model_max_num_batched_tokens(model_mode))
             else:
                 # If max_model_len is too short, use 2048 as the default value
                 # for higher throughput.
-                self.max_num_batched_tokens = max(max_model_len, 2048)
+                max_num_batched_tokens = max(max_model_len, 2048)
+                max_num_batched_tokens_for_mode = \
+                    ModelMode.get_model_max_num_batched_tokens(model_mode)
+                if max_num_batched_tokens_for_mode is not None:
+                    max_num_batched_tokens = max(
+                        max_num_batched_tokens,
+                        max_num_batched_tokens_for_mode)
+
+                self.max_num_batched_tokens = max_num_batched_tokens
+
         if enable_chunked_prefill:
             logger.info(
                 "Chunked prefill is enabled with max_num_batched_tokens=%d.",
