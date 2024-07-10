@@ -20,9 +20,7 @@ from vllm.platforms import current_platform
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import ExecuteModelRequest
 from vllm.worker.cache_engine import CacheEngine
-from vllm.worker.embedding_model_runner import EmbeddingModelRunner
 from vllm.worker.model_runner import GPUModelRunnerBase, ModelRunner
-from vllm.worker.simple_model_runner import SimpleModelRunner
 from vllm.worker.worker_base import LocalOrDistributedWorkerBase, WorkerInput
 
 
@@ -86,10 +84,9 @@ class Worker(LocalOrDistributedWorkerBase):
         ModelRunnerClass: Type[GPUModelRunnerBase] = ModelRunner
         if model_runner_cls is not None:
             ModelRunnerClass = model_runner_cls
-        elif self.model_config.model_mode == ModelMode.EMBEDDING:
-            ModelRunnerClass = EmbeddingModelRunner
-        elif self.model_config.model_mode == ModelMode.SIMPLE:
-            ModelRunnerClass = SimpleModelRunner
+        else:
+            ModelRunnerClass = ModelMode.get_model_runner_cls(
+                self.model_config.model_mode)
         self.model_runner: GPUModelRunnerBase = ModelRunnerClass(
             model_config,
             parallel_config,

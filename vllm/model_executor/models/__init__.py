@@ -100,6 +100,19 @@ class ModelMode(enum.Enum):
     EMBEDDING = enum.auto()
     SIMPLE = enum.auto()
 
+    @staticmethod
+    def get_model_runner_cls(model_mode):
+        if model_mode == ModelMode.EMBEDDING:
+            from vllm.worker.embedding_model_runner import EmbeddingModelRunner
+            return EmbeddingModelRunner
+        if model_mode == ModelMode.SIMPLE:
+            from vllm.worker.simple_model_runner import SimpleModelRunner
+            return SimpleModelRunner
+
+    @staticmethod
+    def get_block_space_manager_impl(model_mode):
+        pass
+
 
 # Architecture -> type.
 # out of tree models
