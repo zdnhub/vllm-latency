@@ -102,16 +102,34 @@ class ModelMode(enum.Enum):
 
     @staticmethod
     def get_model_runner_cls(model_mode):
+
         if model_mode == ModelMode.EMBEDDING:
             from vllm.worker.embedding_model_runner import EmbeddingModelRunner
             return EmbeddingModelRunner
+
         if model_mode == ModelMode.SIMPLE:
             from vllm.worker.simple_model_runner import SimpleModelRunner
             return SimpleModelRunner
 
     @staticmethod
-    def get_block_space_manager_impl(model_mode):
-        pass
+    def get_block_space_manager_impl(use_v2_block_manager, model_mode):
+
+        if use_v2_block_manager:
+            from vllm.core.block_manager_v2 import BlockSpaceManagerV2
+            return BlockSpaceManagerV2
+
+        if model_mode == ModelMode.EMBEDDING:
+            from vllm.core.embedding_model_block_manager import (
+                EmbeddingModelBlockSpaceManager)
+            return EmbeddingModelBlockSpaceManager
+
+        if model_mode == ModelMode.SIMPLE:
+            from vllm.core.simple_model_block_manager import (
+                SimpleModelBlockSpaceManager)
+            return SimpleModelBlockSpaceManager
+
+        from vllm.core.block_manager_v1 import BlockSpaceManagerV1
+        return BlockSpaceManagerV1
 
 
 # Architecture -> type.
