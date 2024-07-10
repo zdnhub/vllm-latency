@@ -789,7 +789,7 @@ class XLMRobertaModel(XLMRobertaPreTrainedModel):
         )
 
 
-@MULTIMODAL_REGISTRY.register_bge_input_mapper()
+@MULTIMODAL_REGISTRY.register_xlmroberta_input_mapper()
 class XLMRobertaForSequenceClassification(XLMRobertaPreTrainedModel):
 
     def __init__(self,

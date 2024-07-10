@@ -38,18 +38,19 @@ def run_test(
                      tensor_parallel_size=tensor_parallel_size,
                      distributed_executor_backend=distributed_executor_backend,
                      enforce_eager=True) as vllm_model:
-        vllm_outputs = vllm_model.encode_simple([{
+        vllm_outputs = vllm_model.process([{
             "prompt": prompt,
             "multi_modal_data": {
-                "bgedata": inputs,
+                "xlmroberta": inputs,
             }
         }])
 
     with hf_runner(model, dtype=dtype, is_simple_model=True) as hf_model:
-        hf_outputs = hf_model.encode_simple(**inputs)
+        hf_outputs = hf_model.process(**inputs)
 
-    print(vllm_outputs, hf_outputs)
-    assert torch.allclose(vllm_outputs, hf_outputs)
+    print(vllm_outputs[0].outputs.result, hf_outputs.logits.view(-1, ))
+    assert torch.allclose(vllm_outputs[0].outputs.result,
+                          hf_outputs.logits.view(-1, ))
 
 
 @pytest.mark.parametrize("model", models)

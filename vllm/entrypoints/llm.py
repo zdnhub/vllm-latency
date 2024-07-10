@@ -10,7 +10,8 @@ from vllm.inputs import (PromptInputs, TextPrompt, TokensPrompt,
                          parse_and_batch_prompt)
 from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
-from vllm.outputs import EmbeddingRequestOutput, RequestOutput
+from vllm.outputs import (EmbeddingRequestOutput, RequestOutput,
+                          SimpleRequestOutput)
 from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
@@ -290,8 +291,7 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if self.llm_engine.model_config.embedding_mode or \
-            self.llm_engine.model_config.simple_mode:
+        if self.llm_engine.model_config.embedding_mode:
             raise ValueError(
                 "LLM.generate() is only supported for generation models "
                 "(XForCausalLM).")
@@ -433,10 +433,10 @@ class LLM:
             considered legacy and may be deprecated in the future. You should
             instead pass them via the ``inputs`` parameter.
         """
-        if not self.llm_engine.model_config.embedding_mode and \
-            not self.llm_engine.model_config.simple_mode:
-            raise ValueError("LLM.encode() is only supported for embedding or "
-                             "simple models (XModel).")
+        if not self.llm_engine.model_config.embedding_mode:
+            raise ValueError(
+                "LLM.encode() is only supported for embedding models (XModel)."
+            )
 
         if prompt_token_ids is not None:
             inputs = self._convert_v1_inputs(
@@ -459,6 +459,73 @@ class LLM:
 
         outputs = self._run_engine(use_tqdm=use_tqdm)
         return LLMEngine.validate_outputs(outputs, EmbeddingRequestOutput)
+
+
+    @deprecate_kwargs("prompts",
+                      "prompt_token_ids",
+                      is_deprecated=lambda: LLM.DEPRECATE_LEGACY,
+                      additional_message="Please use the 'inputs' parameter "
+                      "instead.")
+    def process(
+        self,
+        prompts: Union[Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
+                       Optional[Union[str, List[str]]]] = None,
+        pooling_params: Optional[Union[PoolingParams,
+                                       Sequence[PoolingParams]]] = None,
+        prompt_token_ids: Optional[Union[List[int], List[List[int]]]] = None,
+        use_tqdm: bool = True,
+        lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
+    ) -> List[SimpleRequestOutput]:
+        """Generates the completions for the input prompts.
+
+        This class automatically batches the given prompts, considering
+        the memory constraint. For the best performance, put all of your prompts
+        into a single list and pass it to this method.
+
+        Args:
+            inputs: The inputs to the LLM. You may pass a sequence of inputs for
+                batch inference. See :class:`~vllm.inputs.PromptStrictInputs`
+                for more details about the format of each input.
+            pooling_params: The pooling parameters for pooling. If None, we
+                use the default pooling parameters.
+            use_tqdm: Whether to use tqdm to display the progress bar.
+            lora_request: LoRA request to use for generation, if any.
+
+        Returns:
+            A list of `SimpleRequestOutput` objects containing the
+            generated simple result in the same order as the input prompts.
+
+        Note:
+            Using ``prompts`` and ``prompt_token_ids`` as keyword parameters is
+            considered legacy and may be deprecated in the future. You should
+            instead pass them via the ``inputs`` parameter.
+        """
+        if not self.llm_engine.model_config.simple_mode:
+            raise ValueError(
+                "LLM.process() is only supported for simple models.")
+
+        if prompt_token_ids is not None:
+            inputs = self._convert_v1_inputs(
+                prompts=cast(Optional[Union[str, List[str]]], prompts),
+                prompt_token_ids=prompt_token_ids,
+            )
+        else:
+            inputs = cast(
+                Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
+                prompts)
+
+        if pooling_params is None:
+            # Use default pooling params.
+            pooling_params = PoolingParams()
+
+        self._validate_and_add_requests(
+            inputs=inputs,
+            params=pooling_params,
+            lora_request=lora_request,
+        )
+
+        outputs = self._run_engine(use_tqdm=use_tqdm)
+        return LLMEngine.validate_outputs(outputs, SimpleRequestOutput)
 
     # LEGACY
     def _convert_v1_inputs(

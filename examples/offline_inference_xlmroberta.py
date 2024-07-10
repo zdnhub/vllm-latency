@@ -19,13 +19,13 @@ inputs = tokenizer(
     return_tensors='pt',
     max_length=512,
 ).to("cuda")
-outputs = llm.encode([{
+outputs = llm.process([{
     "prompt": prompt,
     "multi_modal_data": {
-        "bgedata": inputs,
+        "xlmroberta": inputs,
     }
 }],
-                     use_tqdm=False)
+                      use_tqdm=False)
 
 for output in outputs:
     print(output.outputs.result)

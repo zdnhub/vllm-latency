@@ -6,10 +6,10 @@ from .base import MultiModalInputs, MultiModalPlugin
 logger = init_logger(__name__)
 
 
-class BgePlugin(MultiModalPlugin):
+class XLMRobertaPlugin(MultiModalPlugin):
 
     def get_data_key(self) -> str:
-        return "bgedata"
+        return "xlmroberta"
 
     def _default_input_mapper(self, ctx: InputContext,
                               data: object) -> MultiModalInputs:

@@ -71,8 +71,7 @@ class SimpleOutput:
     """The output data of one completion output of a request.
 
     Args:
-        embedding: The embedding vector, which is a list of floats. The
-        length of vector depends on the model as listed in the embedding guide.
+        result: The result of Simple model, like XLMRoberta*
     """
 
     result: torch.Tensor

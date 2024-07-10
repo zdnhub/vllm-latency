@@ -396,7 +396,7 @@ class HfRunner:
     def encode(self, prompts: List[str]) -> List[List[torch.Tensor]]:
         return self.model.encode(prompts)
 
-    def encode_simple(
+    def process(
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
@@ -404,8 +404,8 @@ class HfRunner:
         with torch.no_grad():
             req_outputs = self.model(input_ids,
                                      attention_mask,
-                                     return_dict=True).logits
-        return req_outputs.view(-1, )
+                                     return_dict=True)
+        return req_outputs
 
     def __enter__(self):
         return self
@@ -562,13 +562,13 @@ class VllmRunner:
             outputs.append(embedding)
         return outputs
 
-    def encode_simple(
+    def process(
         self,
         prompts: Union[Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
                        Optional[Union[str, List[str]]]] = None,
     ) -> torch.Tensor:
-        req_outputs = self.model.encode(prompts)
-        return req_outputs[0].outputs.result
+        req_outputs = self.model.process(prompts)
+        return req_outputs
 
     def __enter__(self):
         return self
