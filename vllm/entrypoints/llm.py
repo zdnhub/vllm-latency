@@ -461,11 +461,6 @@ class LLM:
         outputs = self._run_engine(use_tqdm=use_tqdm)
         return LLMEngine.validate_outputs(outputs, EmbeddingRequestOutput)
 
-    @deprecate_kwargs("prompts",
-                      "prompt_token_ids",
-                      is_deprecated=lambda: LLM.DEPRECATE_LEGACY,
-                      additional_message="Please use the 'inputs' parameter "
-                      "instead.")
     def process(
         self,
         inputs: Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
