@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 logger = init_logger(__name__)
 
 _GB = 1 << 30
-_EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS = 32768
-_SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS = 32768
 
 _PP_SUPPORTED_MODELS = [
     "AquilaModel",
@@ -794,15 +792,10 @@ class SchedulerConfig:
                 # It is the values that have the best balance between ITL
                 # and TTFT on A100. Note it is not optimized for throughput.
                 self.max_num_batched_tokens = 512
-            elif model_mode == ModelMode.EMBEDDING:
-                # For embedding, choose specific value for higher throughput
+            elif model_mode in [ModelMode.EMBEDDING, ModelMode.SIMPLE]:
                 self.max_num_batched_tokens = max(
-                    max_model_len, _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS)
-            elif model_mode == ModelMode.SIMPLE:
-                # For non-[decoder,embedding] model, choose specific value
-                # for higher throughput
-                self.max_num_batched_tokens = max(
-                    max_model_len, _SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS)
+                    max_model_len,
+                    ModelMode.get_model_max_num_batched_tokens(model_mode))
             else:
                 # If max_model_len is too short, use 2048 as the default value
                 # for higher throughput.

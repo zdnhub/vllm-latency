@@ -87,6 +87,9 @@ _SIMPLE_MODELS = {
 
 _MODELS = {**_GENERATION_MODELS, **_EMBEDDING_MODELS, **_SIMPLE_MODELS}
 
+_EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS = 32768
+_SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS = 32768
+
 
 class ModelMode(enum.Enum):
     """
@@ -134,6 +137,13 @@ class ModelMode(enum.Enum):
 
         from vllm.core.block_manager_v1 import BlockSpaceManagerV1
         return BlockSpaceManagerV1
+
+    @staticmethod
+    def get_model_max_num_batched_tokens(model_mode: "ModelMode"):
+        if model_mode == ModelMode.EMBEDDING:
+            return _EMBEDDING_MODEL_MAX_NUM_BATCHED_TOKENS
+        if model_mode == ModelMode.SIMPLE:
+            return _SIMPLE_MODEL_MAX_NUM_BATCHED_TOKENS
 
 
 # Architecture -> type.
