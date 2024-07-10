@@ -496,8 +496,8 @@ class LLM:
             inputs=inputs,
             params=pooling_params,
             lora_request=lora_request,
+            prompt_adapter_request=None,
         )
-
         outputs = self._run_engine(use_tqdm=use_tqdm)
         return LLMEngine.validate_outputs(outputs, SimpleRequestOutput)
 
