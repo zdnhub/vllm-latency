@@ -81,12 +81,8 @@ class Worker(LocalOrDistributedWorkerBase):
                 not in ["medusa", "mlp_speculator"]) \
                     else {"return_hidden_states": True}
 
-        #ModelRunnerClass: Type[GPUModelRunnerBase] = ModelRunner
-        if model_runner_cls is not None:
-            ModelRunnerClass = model_runner_cls
-        else:
-            ModelRunnerClass = ModelMode.get_model_runner_cls(
-                self.model_config.model_mode)
+        ModelRunnerClass = model_runner_cls or ModelMode.get_model_runner_cls(
+            self.model_config.model_mode)
         self.model_runner: GPUModelRunnerBase = ModelRunnerClass(
             model_config,
             parallel_config,
