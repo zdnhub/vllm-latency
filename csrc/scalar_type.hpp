@@ -206,7 +206,7 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
       return "ScalarType." + self.get()->str();
     });
 
-    // Bind static functions (convience constructors)
+    // Bind static functions (convenience constructors)
     bind_static_function(cls, "s", &ScalarTypeTorch::s);
     bind_static_function(cls, "u", &ScalarTypeTorch::u);
     bind_static_function(cls, "f", &ScalarTypeTorch::f);
