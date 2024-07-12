@@ -3,21 +3,23 @@ from typing import List, Optional, Tuple
 import torch
 
 from vllm import _custom_ops as ops
+from vllm import scalar_type
 from vllm.platforms import current_platform
+from vllm.scalar_type import ScalarType
 
 GPTQ_MARLIN_TILE = 16
 GPTQ_MARLIN_MIN_THREAD_N = 64
 GPTQ_MARLIN_MIN_THREAD_K = 128
 GPTQ_MARLIN_MAX_PARALLEL = 16
 
-GPTQ_MARLIN_SUPPORTED_NUM_BITS = [4, 8]
+GPTQ_MARLIN_SUPPORTED_QUANT_TYPES = [scalar_type.u4b8, scalar_type.u8b128]
 GPTQ_MARLIN_SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
 GPTQ_MARLIN_SUPPORTED_SYM = [True]
 GTPQ_MARLIN_UNSUPPORTED_GROUP_SIZE_ACT_ORDER = [-1]
 
 
-def check_marlin_supported(num_bits: int, group_size: int, is_sym: bool,
-                           min_capability: int) -> bool:
+def check_marlin_supported(quant_type: ScalarType, group_size: int,
+                           is_sym: bool, min_capability: int) -> bool:
 
     # If the capability of the device is too low, cannot convert.
     major, minor = current_platform.get_device_capability()
@@ -26,18 +28,18 @@ def check_marlin_supported(num_bits: int, group_size: int, is_sym: bool,
         return False
 
     return (device_capability >= min_capability
-            and num_bits in GPTQ_MARLIN_SUPPORTED_NUM_BITS
+            and quant_type in GPTQ_MARLIN_SUPPORTED_QUANT_TYPES
             and group_size in GPTQ_MARLIN_SUPPORTED_GROUP_SIZES
             and is_sym in GPTQ_MARLIN_SUPPORTED_SYM)
 
 
-def verify_marlin_supported(num_bits: int, group_size: Optional[int],
+def verify_marlin_supported(quant_type: ScalarType, group_size: Optional[int],
                             is_sym: bool) -> None:
 
-    if num_bits not in GPTQ_MARLIN_SUPPORTED_NUM_BITS:
+    if quant_type not in GPTQ_MARLIN_SUPPORTED_QUANT_TYPES:
         raise ValueError(
-            f"Marlin does not support weight_bits = {num_bits}. "
-            f"Only weight_bits = {GPTQ_MARLIN_SUPPORTED_NUM_BITS} "
+            f"Marlin does not support weight_bits = {quant_type}. "
+            f"Only types = {GPTQ_MARLIN_SUPPORTED_QUANT_TYPES} "
             "are supported.")
     if (group_size is None
             or group_size not in GPTQ_MARLIN_SUPPORTED_GROUP_SIZES):
@@ -143,7 +145,7 @@ def apply_marlin_linear(input: torch.Tensor,
                         g_idx: torch.Tensor,
                         g_idx_sort_indices: torch.Tensor,
                         workspace: torch.Tensor,
-                        num_bits: int,
+                        wtype: ScalarType,
                         output_size_per_partition: int,
                         input_size_per_partition: int,
                         is_k_full: bool,
@@ -157,7 +159,7 @@ def apply_marlin_linear(input: torch.Tensor,
                                   g_idx,
                                   g_idx_sort_indices,
                                   workspace,
-                                  num_bits,
+                                  wtype,
                                   size_m=reshaped_x.shape[0],
                                   size_n=output_size_per_partition,
                                   size_k=input_size_per_partition,

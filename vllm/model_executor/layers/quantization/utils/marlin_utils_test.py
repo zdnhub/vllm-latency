@@ -5,6 +5,8 @@ from typing import List
 import numpy
 import torch
 
+from vllm.scalar_type import ScalarType
+
 from .marlin_utils import GPTQ_MARLIN_TILE, marlin_permute_scales
 from .quant_utils import get_pack_factor, gptq_quantize_weights, sort_weights
 
@@ -88,9 +90,10 @@ def get_weight_perm(num_bits: int):
     return perm
 
 
-def marlin_quantize(w: torch.Tensor, num_bits: int, group_size: int,
+def marlin_quantize(w: torch.Tensor, quant_type: ScalarType, group_size: int,
                     act_order: bool):
     size_k, size_n = w.shape
+    num_bits = quant_type.size_bits
 
     # Normalize group_size
     if group_size == -1:
@@ -98,8 +101,8 @@ def marlin_quantize(w: torch.Tensor, num_bits: int, group_size: int,
     assert group_size <= size_k
 
     # Quantize (and apply act_order if provided)
-    w_ref, q_w, s, g_idx, rand_perm = gptq_quantize_weights(w, num_bits, group_size,
-                                                       act_order)
+    w_ref, q_w, s, g_idx, rand_perm = gptq_quantize_weights(
+        w, quant_type, group_size, act_order)
 
     # For act_order, sort the "weights" and "g_idx" so that group ids are
     # increasing

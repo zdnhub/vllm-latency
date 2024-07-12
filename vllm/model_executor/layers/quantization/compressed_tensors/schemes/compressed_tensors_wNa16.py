@@ -4,6 +4,7 @@ import torch
 from torch.nn import Parameter
 
 from vllm import _custom_ops as ops
+from vllm import scalar_type
 from vllm.model_executor.layers.quantization.compressed_tensors.schemes import (
     CompressedTensorsScheme)
 from vllm.model_executor.layers.quantization.utils.marlin_utils import (
@@ -22,8 +23,12 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
                  strategy: str,
                  num_bits: int,
                  group_size: Optional[int] = None):
-        self.num_bits = num_bits
-        self.pack_factor = 32 // self.num_bits
+        self.quant_type = {
+            4: scalar_type.u4b8,
+            8: scalar_type.u8b128,
+        }[num_bits]
+
+        self.pack_factor = 32 // self.quant_type.size_bits
         self.strategy = strategy
 
         self.group_size: int
@@ -38,7 +43,7 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
             self.group_size = group_size
 
         # Verify supported on platform.
-        verify_marlin_supported(num_bits=self.num_bits,
+        verify_marlin_supported(quant_type=self.quant_type,
                                 group_size=self.group_size,
                                 is_sym=True)
 
@@ -137,7 +142,7 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
             perm=layer.g_idx_sort_indices,
             size_k=layer.input_size_per_partition,
             size_n=layer.output_size_per_partition,
-            num_bits=self.num_bits)
+            num_bits=self.quant_type.size_bits)
         replace_tensor(layer, "weight_packed", marlin_qweight)
 
         # Permute scales from compressed-tensors format to marlin format.
@@ -158,7 +163,7 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
             g_idx=layer.g_idx,
             g_idx_sort_indices=layer.g_idx_sort_indices,
             workspace=layer.workspace,
-            num_bits=self.num_bits,
+            wtype=self.quant_type,
             output_size_per_partition=layer.output_size_per_partition,
             input_size_per_partition=layer.input_size_per_partition,
             is_k_full=True,

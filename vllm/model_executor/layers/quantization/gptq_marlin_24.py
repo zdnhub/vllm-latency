@@ -4,6 +4,7 @@ import torch
 from torch.nn.parameter import Parameter
 
 from vllm import _custom_ops as ops
+from vllm import scalar_type
 from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import LinearBase, LinearMethodBase
 from vllm.model_executor.layers.quantization.base_config import (
@@ -17,7 +18,7 @@ GPTQ_MARLIN_24_MIN_THREAD_N = 128
 GPTQ_MARLIN_24_MIN_THREAD_K = 128
 GPTQ_MARLIN_24_MAX_PARALLEL = 64
 
-GPTQ_MARLIN_24_SUPPORTED_NUM_BITS = [4, 8]
+GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES = [scalar_type.u4b8, scalar_type.u8b128]
 GPTQ_MARLIN_24_SUPPORTED_GROUP_SIZES = [-1, 128]
 GPTQ_MARLIN_24_SUPPORTED_SYM = [True]
 
@@ -31,14 +32,17 @@ class GPTQMarlin24Config(QuantizationConfig):
         weight_bits: int,
         group_size: int,
     ) -> None:
-        self.weight_bits = weight_bits
+        self.quant_type = {
+            4: scalar_type.u4b8,
+            8: scalar_type.u8b128,
+        }[weight_bits]
         self.group_size = group_size
 
         # Verify
-        if self.weight_bits not in GPTQ_MARLIN_24_SUPPORTED_NUM_BITS:
+        if self.quant_type not in GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES:
             raise ValueError(
-                f"Marlin_24 does not support weight_bits = {self.weight_bits}. "
-                f"Only weight_bits = {GPTQ_MARLIN_24_SUPPORTED_NUM_BITS} "
+                f"Marlin_24 does not support quant_type = {self.quant_type}. "
+                f"Only weight_bits = {GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES} "
                 "are supported.")
         if self.group_size not in GPTQ_MARLIN_24_SUPPORTED_GROUP_SIZES:
             raise ValueError(
@@ -47,7 +51,7 @@ class GPTQMarlin24Config(QuantizationConfig):
                 "are supported.")
 
         # 4 Bits packed into 32 bit datatype.
-        self.pack_factor = 32 // self.weight_bits
+        self.pack_factor = 32 // self.quant_type
 
         # Tile size used by marlin kernels.
         self.tile_size = 16
@@ -66,8 +70,8 @@ class GPTQMarlin24Config(QuantizationConfig):
         self.perm_len = 1024
 
     def __repr__(self) -> str:
-        return "Marlin24Config(weight_bits={}, group_size={})".format(
-            self.weight_bits, self.group_size)
+        return "Marlin24Config(quant_type={}, group_size={})".format(
+            self.quant_type, self.group_size)
 
     @classmethod
     def get_name(cls) -> str:
@@ -278,10 +282,9 @@ class GPTQMarlin24LinearMethod(LinearMethodBase):
         size_k = x_2d.shape[1]
         size_n = scales.shape[1]
 
-        output_2d = ops.gptq_marlin_24_gemm(x_2d, qweight, meta, scales,
-                                            workspace,
-                                            self.quant_config.weight_bits,
-                                            size_m, size_n, size_k)
+        output_2d = ops.gptq_marlin_24_gemm(
+            x_2d, qweight, meta, scales, workspace,
+            self.quant_config.quant_type.size_bits, size_m, size_n, size_k)
 
         output = output_2d.view(x.shape[:-1] + (output_2d.shape[1], ))
 

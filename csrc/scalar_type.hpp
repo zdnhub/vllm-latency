@@ -8,7 +8,7 @@ class ScalarType {
  public:
   constexpr ScalarType(int64_t mantissa, int64_t exponent, int64_t bias,
                        bool _signed)
-      : mantissa(mantissa), exponent(exponent), bias(bias), _signed(_signed){};
+      : mantissa(mantissa), exponent(exponent), bias(bias), _signed(_signed) {};
 
   static constexpr ScalarType s(int64_t size_bits, int64_t bias = 0) {
     return ScalarType(size_bits - 1, 0, bias, true);
@@ -31,8 +31,9 @@ class ScalarType {
   bool is_signed() const { return _signed; }
   bool is_integer() const { return exponent == 0; }
   bool is_floating_point() const { return exponent > 0; }
+  bool has_bias() const { return bias != 0; }
 
-  std::variant<int64_t, double> max() const {
+  std::variant<int64_t, double> unbiased_max() const {
     if (is_floating_point()) {
       // TODO: return max floating point value as double
       //   see `dequant_8bit<bfloat16>` in `csrc/quantization/fp8/fp8_marlin.cu`
@@ -46,7 +47,7 @@ class ScalarType {
     }
   }
 
-  std::variant<int64_t, double> min() const {
+  std::variant<int64_t, double> unbiased_min() const {
     if (is_floating_point()) {
       // TODO: return min floating point value as double
       //   see `dequant_8bit<bfloat16>` in `csrc/quantization/fp8/fp8_marlin.cu`
@@ -67,6 +68,18 @@ class ScalarType {
     }
   }
 
+  std::variant<int64_t, double> max() const {
+    return std::visit(
+        [this](auto x) -> std::variant<int64_t, double> { return {x - bias}; },
+        unbiased_max());
+  }
+
+  std::variant<int64_t, double> min() const {
+    return std::visit(
+        [this](auto x) -> std::variant<int64_t, double> { return {x - bias}; },
+        unbiased_min());
+  }
+
   std::string str() const {
     if (is_floating_point()) {
       auto ret =
@@ -76,13 +89,17 @@ class ScalarType {
       }
       return ret;
     } else {
-      return ((is_signed()) ? "s" : "u") + std::to_string(size_bits());
+      auto ret = ((is_signed()) ? "s" : "u") + std::to_string(size_bits());
+      if (has_bias()) {
+        ret += "B" + std::to_string(bias);
+      }
+      return ret;
     }
   }
 
   bool operator==(ScalarType const& other) const {
     return mantissa == other.mantissa && exponent == other.exponent &&
-           _signed == other._signed;
+           bias == other.bias && _signed == other._signed;
   }
 };
 
@@ -90,9 +107,9 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
  public:
   ScalarTypeTorch(int64_t mantissa, int64_t exponent, int64_t bias,
                   bool _signed)
-      : ScalarType(mantissa, exponent, bias, _signed){};
+      : ScalarType(mantissa, exponent, bias, _signed) {};
 
-  ScalarTypeTorch(ScalarType type) : ScalarType(type){};
+  ScalarTypeTorch(ScalarType type) : ScalarType(type) {};
 
   using Base = ScalarType;
   using Self = ScalarTypeTorch;
@@ -160,6 +177,7 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
     bind_function(cls, "is_signed", &Base::is_signed);
     bind_function(cls, "is_integer", &Base::is_integer);
     bind_function(cls, "is_floating_point", &Base::is_floating_point);
+    bind_function(cls, "has_bias", &Base::has_bias);
     bind_function(cls, "max", [](SelfPtr const& self) {
       return std::visit([](auto arg) { return c10::IValue(arg); },
                         self.get()->max());
@@ -168,14 +186,21 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
       return std::visit([](auto arg) { return c10::IValue(arg); },
                         self.get()->min());
     });
+    bind_function(cls, "unbiased_max", [](SelfPtr const& self) {
+      return std::visit([](auto arg) { return c10::IValue(arg); },
+                        self.get()->unbiased_max());
+    });
+    bind_function(cls, "unbiased_min", [](SelfPtr const& self) {
+      return std::visit([](auto arg) { return c10::IValue(arg); },
+                        self.get()->unbiased_min());
+    });
     bind_function(cls, "__str__", &Base::str);
     bind_function(cls, "__eq__", [](SelfPtr const& self, SelfPtr const& other) {
       return *self == *other;
     });
-    bind_function(cls, "__repr__",
-                  [](SelfPtr const& self, SelfPtr const& other) {
-                    return "ScalarType." + self.get()->str();
-                  });
+    bind_function(cls, "__repr__", [](SelfPtr const& self) {
+      return "ScalarType." + self.get()->str();
+    });
 
     // Bind static functions (convience constructors)
     bind_static_function(cls, "s", &ScalarTypeTorch::s);
@@ -189,5 +214,6 @@ using ScalarTypeTorchPtr = c10::intrusive_ptr<ScalarTypeTorch>;
 // Common types
 static inline constexpr auto kS4 = ScalarType::s(4);
 static inline constexpr auto kU4 = ScalarType::u(4);
-static inline constexpr auto kU4Z8 = ScalarType::u(4, 8);
+static inline constexpr auto kU4B8 = ScalarType::u(4, 8);
+static inline constexpr auto kU8B128 = ScalarType::u(8, 128);
 };  // namespace vllm

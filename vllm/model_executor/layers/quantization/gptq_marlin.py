@@ -4,6 +4,7 @@ import torch
 from torch.nn.parameter import Parameter
 
 from vllm import _custom_ops as ops
+from vllm import scalar_type
 from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import (LinearBase, LinearMethodBase,
                                                set_weight_attrs)
@@ -28,20 +29,24 @@ class GPTQMarlinConfig(QuantizationConfig):
             # (since we have only one group per output channel)
             desc_act = False
 
-        self.weight_bits = weight_bits
-        self.pack_factor = 32 // self.weight_bits  # packed into int32
+        self.quant_type = {
+            4: scalar_type.u4b8,
+            8: scalar_type.u8b128,
+        }[weight_bits]
+
+        self.pack_factor = 32 // self.quant_type.size_bits  # packed into int32
         self.group_size = group_size
         self.desc_act = desc_act
         self.is_sym = is_sym
         self.lm_head_quantized = lm_head_quantized
 
         # Verify supported on platform.
-        verify_marlin_supported(num_bits=self.weight_bits,
+        verify_marlin_supported(quant_type=self.quant_type,
                                 group_size=self.group_size,
                                 is_sym=self.is_sym)
 
     def __repr__(self) -> str:
-        return (f"GPTQMarlinConfig(weight_bits={self.weight_bits}, "
+        return (f"GPTQMarlinConfig(quant_type={self.quant_type}, "
                 f"group_size={self.group_size}, "
                 f"desc_act={self.desc_act}, "
                 f"lm_head_quantized={self.lm_head_quantized})")
@@ -112,12 +117,17 @@ class GPTQMarlinConfig(QuantizationConfig):
         sym = quant_config.get("sym", None)
         desc_act = quant_config.get("desc_act", None)
 
+        quant_type = {
+            4: scalar_type.u4b8,
+            8: scalar_type.u8b128,
+        }.get(num_bits)
+
         # If we cannot find the info needed in the config, cannot convert.
         if (num_bits is None or group_size is None or sym is None
                 or desc_act is None):
             return False
 
-        return check_marlin_supported(num_bits=num_bits,
+        return check_marlin_supported(quant_type=quant_type,
                                       group_size=group_size,
                                       is_sym=sym,
                                       min_capability=cls.get_min_capability())
@@ -294,7 +304,7 @@ class GPTQMarlinLinearMethod(LinearMethodBase):
             perm=layer.g_idx_sort_indices,
             size_k=layer.input_size_per_partition,
             size_n=layer.output_size_per_partition,
-            num_bits=self.quant_config.weight_bits)
+            num_bits=self.quant_config.quant_type.size_bits)
         replace_tensor(layer, "qweight", marlin_qweight)
 
         # Permute scales from autogptq format to marlin format.
@@ -321,7 +331,7 @@ class GPTQMarlinLinearMethod(LinearMethodBase):
                                       g_idx=layer.g_idx,
                                       perm=layer.g_idx_sort_indices,
                                       workspace=layer.workspace,
-                                      num_bits=self.quant_config.weight_bits,
+                                      b_q_type=self.quant_config.quant_type,
                                       size_m=reshaped_x.shape[0],
                                       size_n=layer.output_size_per_partition,
                                       size_k=layer.input_size_per_partition,
