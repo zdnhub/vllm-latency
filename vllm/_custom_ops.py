@@ -17,8 +17,7 @@ with contextlib.suppress(ImportError):
     import vllm._moe_C
 
 with contextlib.suppress(ImportError):
-    # ruff: noqa: F401
-    import vllm._punica_C
+    import vllm._punica_C  # noqa: F401
 
 
 def is_custom_op_supported(op_name: str) -> bool:
