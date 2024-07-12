@@ -13,6 +13,7 @@ from openai.types.chat import (ChatCompletionContentPartImageParam,
 
 from vllm.config import ModelConfig
 from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.engine.llm_engine import QueueOverflowError
 from vllm.entrypoints.openai.protocol import (
     ChatCompletionContentPartParam, ChatCompletionLogProb,
     ChatCompletionLogProbs, ChatCompletionLogProbsContent,
@@ -305,6 +306,9 @@ class OpenAIServingChat(OpenAIServing):
                 return await self.chat_completion_full_generator(
                     request, raw_request, result_generator, request_id,
                     conversation)
+            except QueueOverflowError as e:
+                msg, status_code = e.args
+                return self.create_error_response(msg, status_code=status_code)
             except ValueError as e:
                 # TODO: Use a vllm-specific Validation Error
                 return self.create_error_response(str(e))
