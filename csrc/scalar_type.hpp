@@ -103,6 +103,10 @@ class ScalarType {
   }
 };
 
+// Create a TORCH_LIBRARY compatible version of ScalarType (i.e. inherit from
+//  torch::CustomClassHolder), we cannot have ScalarType inherit from
+//  torch::CustomClassHolder and have a constexpr constructor at the same time
+//  (torch::CustomClassHolder does not have a constexpr destructor)
 class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
  public:
   ScalarTypeTorch(int64_t mantissa, int64_t exponent, int64_t bias,
@@ -214,12 +218,12 @@ using ScalarTypeTorchPtr = c10::intrusive_ptr<ScalarTypeTorch>;
 // Common types
 static inline constexpr auto kS4 = ScalarType::s(4);
 static inline constexpr auto kU4 = ScalarType::u(4);
-static inline constexpr auto kS8 = ScalarType::s(8);
-static inline constexpr auto kU8 = ScalarType::u(8);
-static inline constexpr auto kFE3M4 = ScalarType::f(4, 3);
-static inline constexpr auto kFE4M3 = ScalarType::f(3, 4);
-static inline constexpr auto kFE8M7 = ScalarType::f(7, 8);
-static inline constexpr auto kFE5M10 = ScalarType::f(5, 11);
+static inline constexpr auto kS8 = ScalarType::s(8);          // int8
+static inline constexpr auto kU8 = ScalarType::u(8);          // uint8
+static inline constexpr auto kFE3M4 = ScalarType::f(4, 3);    // FP8_E3M4
+static inline constexpr auto kFE4M3 = ScalarType::f(3, 4);    // FP8_E4M3
+static inline constexpr auto kFE8M7 = ScalarType::f(7, 8);    // BFloat16
+static inline constexpr auto kFE5M10 = ScalarType::f(5, 11);  // Float16
 
 // "gptq" types
 static inline constexpr auto kU4B8 = ScalarType::u(4, 8);
