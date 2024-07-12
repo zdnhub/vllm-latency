@@ -20,11 +20,31 @@ if TYPE_CHECKING:
 
 torch.library.define(
     "vllm::flash_attn_varlen_func",
-    "(Tensor q, Tensor k, Tensor v, Tensor cu_seqlens_q, Tensor cu_seqlens_k, int max_seqlen_q, int max_seqlen_k, float softmax_scale, bool causal, (int, int) window_size, float[]? alibi_slopes, int[] out_shape) -> Tensor"
+    ("(Tensor q, "
+     "Tensor k, "
+     "Tensor v, "
+     "Tensor cu_seqlens_q, "
+     "Tensor cu_seqlens_k, "
+     "int max_seqlen_q, "
+     "int max_seqlen_k, "
+     "float softmax_scale, "
+     "bool causal, "
+     "(int, int) window_size, "
+     "float[]? alibi_slopes, "
+     "int[] out_shape) -> Tensor")
 )
+
 torch.library.define(
     "vllm::flash_attn_with_kvcache",
-    "(Tensor q, Tensor k, Tensor v, Tensor block_table, Tensor cache_seqlens, float softmax_scale, bool causal, float[]? alibi_slopes, int[] out_shape) -> Tensor"
+    ("(Tensor q, "
+     "Tensor k, "
+     "Tensor v, "
+     "Tensor block_table, "
+     "Tensor cache_seqlens, "
+     "float softmax_scale, "
+     "bool causal, "
+     "float[]? alibi_slopes, "
+     "int[] out_shape) -> Tensor")
 )
 
 
@@ -636,21 +656,22 @@ class FlashAttentionImpl(AttentionImpl):
                 # prefix-enabled attention
                 assert prefill_meta.seq_lens is not None
                 max_seq_len = max(prefill_meta.seq_lens)
-                output[:
-                       num_prefill_tokens] = torch.ops.vllm.flash_attn_varlen_func(
-                           q=query,
-                           k=key_cache,
-                           v=value_cache,
-                           cu_seqlens_q=prefill_meta.query_start_loc,
-                           max_seqlen_q=prefill_meta.max_query_len,
-                           cu_seqlens_k=prefill_meta.seq_start_loc,
-                           max_seqlen_k=max_seq_len,
-                           softmax_scale=self.scale,
-                           causal=True,
-                           alibi_slopes=self.alibi_slopes,
-                           block_table=prefill_meta.block_tables,
-                           out_shape=output[:num_prefill_tokens].size(),
-                       )
+                output[:num_prefill_tokens] = (
+                    torch.ops.vllm.flash_attn_varlen_func(
+                        q=query,
+                        k=key_cache,
+                        v=value_cache,
+                        cu_seqlens_q=prefill_meta.query_start_loc,
+                        max_seqlen_q=prefill_meta.max_query_len,
+                        cu_seqlens_k=prefill_meta.seq_start_loc,
+                        max_seqlen_k=max_seq_len,
+                        softmax_scale=self.scale,
+                        causal=True,
+                        alibi_slopes=self.alibi_slopes,
+                        block_table=prefill_meta.block_tables,
+                        out_shape=output[:num_prefill_tokens].size(),
+                    )
+                )
 
         if decode_meta := attn_metadata.decode_metadata:
             # Decoding run.
