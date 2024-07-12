@@ -690,6 +690,7 @@ class SequenceGroupMetadata:
         # Zero means speculative decoding is disabled for some reasons.
         # TODO: We should maintain this states out of the sequence group.
         self.num_speculative_tokens = None
+        self.num_multi_query_tokens = None
 
         if self._token_chunk_size is None:
             if is_prompt:
@@ -716,6 +717,18 @@ class SequenceGroupMetadata:
         """Return the number of tokens to be processed (chunk size)."""
         assert self._token_chunk_size is not None
         return self._token_chunk_size
+
+    @token_chunk_size.setter
+    def token_chunk_size(self, value: int) -> None:
+        self._token_chunk_size = value
+
+    def __repr__(self) -> str:
+        return (f"SequenceGroupMetadata(request_id={self.request_id}, "
+                f"is_prompt={self.is_prompt}, "
+                f"seq_data={self.seq_data}, "
+                f"sampling_params={self.sampling_params}, "
+                f"block_tables={self.block_tables}, "
+                f"token_chunk_size={self.token_chunk_size})")
 
 
 class SequenceOutput:
@@ -942,7 +955,8 @@ class HiddenStates:
 
     def __init__(self, seq_group_metadata_list: List[SequenceGroupMetadata],
                  hidden_states: torch.Tensor):
-        assert len(seq_group_metadata_list) == len(hidden_states)
+        assert seq_group_metadata_list[0].is_prompt or len(
+            seq_group_metadata_list) == len(hidden_states)
         self.seq_ids: List[int] = get_all_seq_ids(seq_group_metadata_list)
         self.hidden_states: torch.Tensor = hidden_states
 
