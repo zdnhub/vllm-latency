@@ -214,6 +214,15 @@ using ScalarTypeTorchPtr = c10::intrusive_ptr<ScalarTypeTorch>;
 // Common types
 static inline constexpr auto kS4 = ScalarType::s(4);
 static inline constexpr auto kU4 = ScalarType::u(4);
+static inline constexpr auto kS8 = ScalarType::s(8);
+static inline constexpr auto kU8 = ScalarType::u(8);
+static inline constexpr auto kFE3M4 = ScalarType::f(4, 3);
+static inline constexpr auto kFE4M3 = ScalarType::f(3, 4);
+static inline constexpr auto kFE8M7 = ScalarType::f(7, 8);
+static inline constexpr auto kFE5M10 = ScalarType::f(5, 11);
+
+// "gptq" types
 static inline constexpr auto kU4B8 = ScalarType::u(4, 8);
 static inline constexpr auto kU8B128 = ScalarType::u(8, 128);
+
 };  // namespace vllm

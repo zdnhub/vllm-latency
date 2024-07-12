@@ -101,7 +101,8 @@ def test_marlin_repack(k_chunk, n_chunk, quant_type, group_size, act_order,
 
     # Pack to Marlin format
     weight_perm = get_weight_perm(quant_type.size_bits)
-    marlin_q_w_1 = marlin_weights(q_w, size_k, size_n, quant_type.size_bits, weight_perm)
+    marlin_q_w_1 = marlin_weights(q_w, size_k, size_n, quant_type.size_bits, 
+                                  weight_perm)
 
     # Run Marlin repack GPU kernel
     marlin_q_w_2 = ops.gptq_marlin_repack(
