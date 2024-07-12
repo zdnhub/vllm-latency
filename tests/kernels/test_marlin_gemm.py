@@ -21,7 +21,7 @@ from vllm.model_executor.layers.quantization.utils.marlin_utils_test import (
 from vllm.model_executor.layers.quantization.utils.marlin_utils_test_24 import (
     marlin_24_quantize)
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
-    gptq_pack, quantize_weights, sort_weights)
+    gptq_pack, gptq_quantize_weights, sort_weights)
 
 ACT_ORDER_OPTS = [False, True]
 K_FULL_OPTS = [False, True]
@@ -87,7 +87,7 @@ def test_marlin_repack(k_chunk, n_chunk, num_bits, group_size, act_order,
     b_weight = rand_data((size_k, size_n))
 
     # Quantize (and apply act_order if provided)
-    w_ref, q_w, s, g_idx, rand_perm = quantize_weights(b_weight, num_bits,
+    w_ref, q_w, s, g_idx, rand_perm = gptq_quantize_weights(b_weight, num_bits,
                                                        group_size, act_order)
 
     # Pack to GPTQ format

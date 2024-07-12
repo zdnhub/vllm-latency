@@ -6,7 +6,7 @@ import numpy
 import torch
 
 from .marlin_utils import GPTQ_MARLIN_TILE, marlin_permute_scales
-from .quant_utils import get_pack_factor, quantize_weights, sort_weights
+from .quant_utils import get_pack_factor, gptq_quantize_weights, sort_weights
 
 
 class MarlinWorkspace:
@@ -98,7 +98,7 @@ def marlin_quantize(w: torch.Tensor, num_bits: int, group_size: int,
     assert group_size <= size_k
 
     # Quantize (and apply act_order if provided)
-    w_ref, q_w, s, g_idx, rand_perm = quantize_weights(w, num_bits, group_size,
+    w_ref, q_w, s, g_idx, rand_perm = gptq_quantize_weights(w, num_bits, group_size,
                                                        act_order)
 
     # For act_order, sort the "weights" and "g_idx" so that group ids are

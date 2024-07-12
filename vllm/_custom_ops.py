@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple, Type
 
 import torch
 
+from vllm._custom_classes import ScalarType
 from vllm.logger import init_logger
 
 logger = init_logger(__name__)

@@ -7,7 +7,7 @@ import numpy
 import torch
 
 from .marlin_utils_test import marlin_weights
-from .quant_utils import quantize_weights
+from .quant_utils import gptq_quantize_weights
 
 
 # This is PyTorch implementation of main part of reorder_meta()
@@ -441,7 +441,7 @@ def marlin_24_quantize(
     w_24, mask_24 = inject_24(w, size_k, size_n)
 
     # Quantize
-    w_24_ref, q_w_24, s, g_idx, rand_perm = quantize_weights(w_24,
+    w_24_ref, q_w_24, s, g_idx, rand_perm = gptq_quantize_weights(w_24,
                                                              num_bits,
                                                              group_size,
                                                              act_order=False)
