@@ -8,7 +8,7 @@ class ScalarType {
  public:
   constexpr ScalarType(int64_t mantissa, int64_t exponent, int64_t bias,
                        bool _signed)
-      : mantissa(mantissa), exponent(exponent), bias(bias), _signed(_signed) {};
+      : mantissa(mantissa), exponent(exponent), bias(bias), _signed(_signed){};
 
   static constexpr ScalarType s(int64_t size_bits, int64_t bias = 0) {
     return ScalarType(size_bits - 1, 0, bias, true);
@@ -91,7 +91,7 @@ class ScalarType {
     } else {
       auto ret = ((is_signed()) ? "s" : "u") + std::to_string(size_bits());
       if (has_bias()) {
-        ret += "B" + std::to_string(bias);
+        ret += "b" + std::to_string(bias);
       }
       return ret;
     }
@@ -107,9 +107,9 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
  public:
   ScalarTypeTorch(int64_t mantissa, int64_t exponent, int64_t bias,
                   bool _signed)
-      : ScalarType(mantissa, exponent, bias, _signed) {};
+      : ScalarType(mantissa, exponent, bias, _signed){};
 
-  ScalarTypeTorch(ScalarType type) : ScalarType(type) {};
+  ScalarTypeTorch(ScalarType type) : ScalarType(type){};
 
   using Base = ScalarType;
   using Self = ScalarTypeTorch;

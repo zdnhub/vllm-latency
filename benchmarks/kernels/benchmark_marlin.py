@@ -149,7 +149,7 @@ def bench_run(results: List[benchmark.Measurement], model: str,
     results.append(
         benchmark.Timer(
             stmt=
-            "q_res = gptq_marlin_repack(q_w_gptq, repack_sort_indices, size_k, size_n, num_bits)",  # noqa: E501
+            "q_res = gptq_marlin_repack(q_w_gptq, repack_sort_indices, size_k, size_n, quant_type.size_bits)",  # noqa: E501
             globals=globals,
             label=label,
             sub_label=sub_label,

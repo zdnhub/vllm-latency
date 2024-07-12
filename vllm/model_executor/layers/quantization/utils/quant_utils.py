@@ -9,8 +9,6 @@ from vllm.scalar_type import ScalarType
 SUPPORTED_GPTQ_QUANT_TYPES = [scalar_type.u4b8, scalar_type.u8b128]
 SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
 
-print(SUPPORTED_GPTQ_QUANT_TYPES)
-
 
 def get_pack_factor(num_bits):
     assert 32 % num_bits == 0, f"Unsupported num_bits = {num_bits}"
@@ -107,7 +105,6 @@ def gptq_quantize_weights(w: torch.Tensor, quant_type: ScalarType,
     size_k, _ = w.shape
 
     assert w.is_floating_point(), "w must be float"
-    print(SUPPORTED_GPTQ_QUANT_TYPES)
     assert quant_type in SUPPORTED_GPTQ_QUANT_TYPES, \
         f"Unsupported gptq type = {quant_type}"
     assert group_size in SUPPORTED_GROUP_SIZES + [
