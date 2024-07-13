@@ -29,7 +29,7 @@ Quick start using Dockerfile
 
 .. code-block:: console
 
-    $ docker build -f Dockerfile.cpu -t vllm-cpu-env --shm-size=4g .
+    $ docker build -f setup_files/docker/Dockerfile.cpu -t vllm-cpu-env --shm-size=4g .
     $ docker run -it \
                  --rm \
                  --network=host \
@@ -56,7 +56,7 @@ Build from source
 
     $ pip install --upgrade pip
     $ pip install wheel packaging ninja "setuptools>=49.4.0" numpy
-    $ pip install -v -r requirements-cpu.txt --extra-index-url https://download.pytorch.org/whl/cpu
+    $ pip install -v -r setup_files/requirements/cpu.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 - Finally, build and install vLLM CPU backend: 
 

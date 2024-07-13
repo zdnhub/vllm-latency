@@ -27,7 +27,7 @@ Quick start using Dockerfile
 
 .. code-block:: console
 
-    $ docker build -f Dockerfile.xpu -t vllm-xpu-env --shm-size=4g .
+    $ docker build -f setup_files/docker/Dockerfile.xpu -t vllm-xpu-env --shm-size=4g .
     $ docker run -it \
                  --rm \
                  --network=host \
@@ -47,7 +47,7 @@ Build from source
 .. code-block:: console
 
     $ pip install --upgrade pip
-    $ pip install -v -r requirements-xpu.txt 
+    $ pip install -v -r setup_files/requirements/xpu.txt 
 
 - Finally, build and install vLLM XPU backend: 
 

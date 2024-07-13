@@ -31,7 +31,7 @@ Quick start using Dockerfile
 
 .. code-block:: console
 
-    $ docker build -f Dockerfile.openvino -t vllm-openvino-env .
+    $ docker build -f setup_files/docker/Dockerfile.openvino -t vllm-openvino-env .
     $ docker run -it --rm vllm-openvino-env
 
 .. _install_openvino_backend_from_source:
@@ -51,7 +51,7 @@ Install from source
   .. code-block:: console
 
       $ pip install --upgrade pip
-      $ pip install -r requirements-build.txt --extra-index-url https://download.pytorch.org/whl/cpu
+      $ pip install -r setup_files/requirements/build.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 - Finally, install vLLM with OpenVINO backend: 
 
