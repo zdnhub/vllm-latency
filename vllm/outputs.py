@@ -225,13 +225,13 @@ class EmbeddingRequestOutput:
 
 class SimpleRequestOutput:
     """
-    The output data of an embedding request to the LLM.
+    The output data of an simple model request to the LLM.
 
     Args:
-        request_id (str): A unique identifier for the embedding request.
+        request_id (str): A unique identifier for the simple model request.
         outputs (SimpleOutput): Results for the given input.
         prompt_token_ids (List[int]): A list of token IDs used in the prompt.
-        finished (bool): A flag indicating whether the embedding is completed.
+        finished (bool): A flag indicating whether the result is completed.
     """
 
     def __init__(self, request_id: str, outputs: "SimpleOutput",
@@ -255,13 +255,13 @@ class SimpleRequestOutput:
 
     def __repr__(self):
         """
-        Returns a string representation of an EmbeddingRequestOutput instance.
+        Returns a string representation of an SimpleRequestOutput instance.
 
         The representation includes the request_id and the number of outputs,
         providing a quick overview of the embedding request's results.
 
         Returns:
-            str: A string representation of the EmbeddingRequestOutput instance.
+            str: A string representation of the SimpleRequestOutput instance.
         """
         return (f"SimpleRequestOutput(request_id='{self.request_id}', "
                 f"outputs={repr(self.outputs)}, "

@@ -821,7 +821,7 @@ class EmbeddingSequenceGroupOutput(SequenceGroupOutput):
 
 
 class SimpleSequenceGroupOutput(SequenceGroupOutput):
-    """The model output associated with an embedding sequence group."""
+    """The model output associated with an tensor."""
 
     def __init__(
         self,
