@@ -136,6 +136,22 @@ endif()
 #
 
 #
+# _core_C extension
+#  (built for every target platform)
+#
+
+set(VLLM_EXT_SRC
+  "csrc/torch_bindings_core.cpp")
+
+define_gpu_extension_target(
+  _core_C
+  DESTINATION vllm
+  LANGUAGE CXX
+  SOURCES ${VLLM_EXT_SRC}
+  USE_SABI 3
+  WITH_SOABI)
+
+#
 # _C extension
 #
 
@@ -151,7 +167,7 @@ set(VLLM_EXT_SRC
   "csrc/quantization/fp8/common.cu"
   "csrc/cuda_utils_kernels.cu"
   "csrc/moe_align_block_size_kernels.cu"
-  "csrc/torch_bindings.cpp")
+  "csrc/torch_bindings_ops.cpp")
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   include(FetchContent)
@@ -290,6 +306,8 @@ endif()
 # cmake --build . --target default
 #
 add_custom_target(default)
+message(STATUS "Enabling core extension.")
+add_dependencies(default _core_C)
 
 if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   message(STATUS "Enabling C extension.")

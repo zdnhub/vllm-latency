@@ -244,6 +244,8 @@ def _is_xpu() -> bool:
 def _build_custom_ops() -> bool:
     return _is_cuda() or _is_hip() or _is_cpu()
 
+def _build_custom_classes() -> bool:
+    return True
 
 def _install_punica() -> bool:
     return envs.VLLM_INSTALL_PUNICA_KERNELS
@@ -409,7 +411,7 @@ def get_requirements() -> List[str]:
     return requirements
 
 
-ext_modules = []
+ext_modules = [CMakeExtension(name="vllm._core_C")]
 
 if _is_cuda() or _is_hip():
     ext_modules.append(CMakeExtension(name="vllm._moe_C"))
