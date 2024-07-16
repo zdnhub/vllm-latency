@@ -3,7 +3,8 @@ import gc
 import os
 import sys
 from collections import UserList
-from typing import (Any, Dict, List, Optional, Sequence, Tuple, TypedDict, TypeVar, Union)
+from typing import (Any, Dict, List, Optional, Sequence, Tuple, TypedDict,
+                    TypeVar, Union)
 
 import pytest
 import torch
