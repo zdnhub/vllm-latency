@@ -86,7 +86,7 @@ message(STATUS "Enabling core extension.")
 #  (built for every target platform)
 
 set(VLLM_EXT_SRC
-  "csrc/torch_bindings_core.cpp")
+  "csrc/core/torch_bindings.cpp")
 
 define_gpu_extension_target(
   _core_C
@@ -184,7 +184,7 @@ set(VLLM_EXT_SRC
   "csrc/quantization/fp8/common.cu"
   "csrc/cuda_utils_kernels.cu"
   "csrc/moe_align_block_size_kernels.cu"
-  "csrc/torch_bindings_ops.cpp")
+  "csrc/torch_bindings.cpp")
 
 if(VLLM_GPU_LANG STREQUAL "CUDA")
   include(FetchContent)

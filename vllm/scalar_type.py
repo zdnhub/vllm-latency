@@ -3,7 +3,7 @@ from enum import Enum
 from ._custom_classes import ScalarType
 
 
-# Mirrors enum in `scalar_type.hpp`
+# Mirrors enum in `core/scalar_type.hpp`
 class NanRepr(Enum):
     IEEE_754 = 0  # nans are: Exp all 1s, mantissa not all 0s
     NONE = 1  # nans are not supported

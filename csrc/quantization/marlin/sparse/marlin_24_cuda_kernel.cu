@@ -27,7 +27,7 @@
 #include <iostream>
 
 #include "common/base.h"
-#include "scalar_type.hpp"
+#include "core/scalar_type.hpp"
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 800
 

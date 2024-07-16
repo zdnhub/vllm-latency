@@ -3,7 +3,7 @@
 #include <optional>
 #include <torch/library.h>
 
-#include "scalar_type.hpp"
+#include "core/scalar_type.hpp"
 
 void paged_attention_v1(
     torch::Tensor& out, torch::Tensor& query, torch::Tensor& key_cache,

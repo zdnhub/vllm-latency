@@ -21,7 +21,7 @@
 
 #include "gptq_marlin.cuh"
 #include "gptq_marlin_dtypes.cuh"
-#include "scalar_type.hpp"
+#include "core/scalar_type.hpp"
 
 #define STATIC_ASSERT_SCALAR_TYPE_VALID(scalar_t)               \
   static_assert(std::is_same<scalar_t, half>::value ||          \
