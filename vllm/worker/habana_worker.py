@@ -12,11 +12,13 @@ import torch.distributed
 
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, MultiModalConfig, ParallelConfig,
-                         SchedulerConfig, SpeculativeConfig)
+                         PromptAdapterConfig, SchedulerConfig,
+                         SpeculativeConfig)
 from vllm.distributed import (ensure_model_parallel_initialized,
                               init_distributed_environment)
 from vllm.lora.request import LoRARequest
 from vllm.model_executor import set_random_seed
+from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import ExecuteModelRequest
 from vllm.worker.cache_engine import CacheEngine
 from vllm.worker.habana_model_runner import HabanaModelRunner
@@ -45,6 +47,7 @@ class HabanaWorker(LocalOrDistributedWorkerBase):
         lora_config: Optional[LoRAConfig] = None,
         multimodal_config: Optional[MultiModalConfig] = None,
         speculative_config: Optional[SpeculativeConfig] = None,
+        prompt_adapter_config: Optional[PromptAdapterConfig] = None,
         is_driver_worker: bool = False,
     ) -> None:
         self.model_config = model_config
@@ -244,6 +247,19 @@ class HabanaWorker(LocalOrDistributedWorkerBase):
         raise NotImplementedError("LoRA is not implemented for HPU backend.")
 
     def pin_lora(self, lora_id: int) -> bool:
+        raise NotImplementedError("LoRA is not implemented for HPU backend.")
+
+    def add_prompt_adapter(
+            self, prompt_adapter_request: PromptAdapterRequest) -> bool:
+        raise NotImplementedError("LoRA is not implemented for HPU backend.")
+
+    def remove_prompt_adapter(self, prompt_adapter_id: int) -> bool:
+        raise NotImplementedError("LoRA is not implemented for HPU backend.")
+
+    def pin_prompt_adapter(self, prompt_adapter_id: int) -> bool:
+        raise NotImplementedError("LoRA is not implemented for HPU backend.")
+
+    def list_prompt_adapters(self) -> Set[int]:
         raise NotImplementedError("LoRA is not implemented for HPU backend.")
 
     @property
