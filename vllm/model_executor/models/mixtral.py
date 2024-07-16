@@ -29,7 +29,7 @@ from transformers import MixtralConfig
 
 from vllm.attention import Attention, AttentionMetadata
 from vllm.config import CacheConfig, LoRAConfig
-from vllm.distributed import get_tensor_model_parallel_world_size
+from vllm.distributed import get_pp_group, get_tensor_model_parallel_world_size
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.linear import (QKVParallelLinear,
@@ -48,6 +48,7 @@ from vllm.sequence import IntermediateTensors, SamplerOutput
 from vllm.utils import print_warning_once
 
 from .interfaces import SupportsLoRA
+from .utils import is_pp_missing_parameter, make_layers
 
 
 class MixtralMoE(nn.Module):
@@ -255,12 +256,11 @@ class MixtralModel(nn.Module):
             config.hidden_size,
             org_num_embeddings=config.vocab_size,
         )
-        self.layers = nn.ModuleList([
-            MixtralDecoderLayer(config,
-                                cache_config,
-                                quant_config=quant_config)
-            for _ in range(config.num_hidden_layers)
-        ])
+        self.start_layer, self.end_layer, self.layers = make_layers(
+            config.num_hidden_layers,
+            lambda: MixtralDecoderLayer(config=config,
+                                      cache_config=cache_config,
+                                      quant_config=quant_config))
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
@@ -269,14 +269,25 @@ class MixtralModel(nn.Module):
         positions: torch.Tensor,
         kv_caches: List[torch.Tensor],
         attn_metadata: AttentionMetadata,
+        intermediate_tensors: Optional[IntermediateTensors],
     ) -> torch.Tensor:
-        hidden_states = self.embed_tokens(input_ids)
-        residual = None
-        for i in range(len(self.layers)):
+        if get_pp_group().is_first_rank:
+            hidden_states = self.embed_tokens(input_ids)
+            residual = None
+        else:
+            assert intermediate_tensors is not None
+            hidden_states = intermediate_tensors["hidden_states"]
+            residual = intermediate_tensors["residual"]
+        for i in range(self.start_layer, self.end_layer):
             layer = self.layers[i]
             hidden_states, residual = layer(positions, hidden_states,
-                                            kv_caches[i], attn_metadata,
+                                            kv_caches[i - self.start_layer], attn_metadata,
                                             residual)
+        if not get_pp_group().is_last_rank:
+            return IntermediateTensors({
+                "hidden_states": hidden_states,
+                "residual": residual
+            })
         hidden_states, _ = self.norm(hidden_states, residual)
         return hidden_states
 
@@ -347,7 +358,7 @@ class MixtralForCausalLM(nn.Module, SupportsLoRA):
         intermediate_tensors: Optional[IntermediateTensors] = None,
     ) -> torch.Tensor:
         hidden_states = self.model(input_ids, positions, kv_caches,
-                                   attn_metadata)
+                                   attn_metadata, intermediate_tensors)
         return hidden_states
 
     def compute_logits(self, hidden_states: torch.Tensor,
@@ -355,6 +366,20 @@ class MixtralForCausalLM(nn.Module, SupportsLoRA):
         logits = self.logits_processor(self.lm_head, hidden_states,
                                        sampling_metadata)
         return logits
+
+    def make_empty_intermediate_tensors(
+            self, batch_size: int, dtype: torch.dtype,
+            device: torch.device) -> IntermediateTensors:
+        return IntermediateTensors({
+            "hidden_states":
+            torch.zeros((batch_size, self.config.hidden_size),
+                        dtype=dtype,
+                        device=device),
+            "residual":
+            torch.zeros((batch_size, self.config.hidden_size),
+                        dtype=dtype,
+                        device=device),
+        })
 
     def sample(
         self,
@@ -392,6 +417,8 @@ class MixtralForCausalLM(nn.Module, SupportsLoRA):
                 # Skip loading extra bias for GPTQ models.
                 if name.endswith(".bias") and name not in params_dict:
                     continue
+                if is_pp_missing_parameter(name, self):
+                    continue
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
@@ -402,6 +429,8 @@ class MixtralForCausalLM(nn.Module, SupportsLoRA):
                     if weight_name not in name:
                         continue
                     name = name.replace(weight_name, param_name)
+                    if is_pp_missing_parameter(name, self):
+                        continue
                     param = params_dict[name]
                     weight_loader = param.weight_loader
                     weight_loader(param,
@@ -428,6 +457,8 @@ class MixtralForCausalLM(nn.Module, SupportsLoRA):
                             continue
                         else:
                             name = remapped_kv_scale_name
+                    if is_pp_missing_parameter(name, self):
+                        continue
                     param = params_dict[name]
                     weight_loader = getattr(param, "weight_loader",
                                             default_weight_loader)
