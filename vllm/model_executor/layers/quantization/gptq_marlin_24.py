@@ -4,12 +4,12 @@ import torch
 from torch.nn.parameter import Parameter
 
 from vllm import _custom_ops as ops
-from vllm.scalar_type import scalar_types
 from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import LinearBase, LinearMethodBase
 from vllm.model_executor.layers.quantization.base_config import (
     QuantizationConfig)
 from vllm.model_executor.utils import set_weight_attrs
+from vllm.scalar_type import scalar_types
 
 logger = init_logger(__name__)
 
@@ -33,8 +33,8 @@ class GPTQMarlin24Config(QuantizationConfig):
         group_size: int,
     ) -> None:
         self.quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_types.u4b8,
+            8: scalar_types.u8b128,
         }[weight_bits]
         self.group_size = group_size
 

@@ -1,20 +1,21 @@
 import pytest
 import torch
-import numpy as np
 
 from vllm.scalar_type import scalar_types
 
-@pytest.mark.parametrize("type_tuple", 
-                         ((-8, 7, scalar_types.s4),
-                          (0, 15, scalar_types.u4),
-                          (-8, 7, scalar_types.u4b8),
-                          (-128, 127, scalar_types.u8b128),
-                          (torch.int8, scalar_types.s8),
-                          (torch.uint8, scalar_types.u8),
-                          (torch.float8_e5m2, scalar_types.fE5M2),
-                          (torch.float8_e4m3fn, scalar_types.fE4M3fn),
-                          (torch.bfloat16, scalar_types.fE8M7),
-                          (torch.float16, scalar_types.fE5M10),),
+
+@pytest.mark.parametrize("type_tuple", (
+    (-8, 7, scalar_types.s4),
+    (0, 15, scalar_types.u4),
+    (-8, 7, scalar_types.u4b8),
+    (-128, 127, scalar_types.u8b128),
+    (torch.int8, scalar_types.s8),
+    (torch.uint8, scalar_types.u8),
+    (torch.float8_e5m2, scalar_types.fE5M2),
+    (torch.float8_e4m3fn, scalar_types.fE4M3fn),
+    (torch.bfloat16, scalar_types.fE8M7),
+    (torch.float16, scalar_types.fE5M10),
+),
                          ids=lambda x: str(x))
 def test_scalar_type_min_max(type_tuple):
     print(type_tuple)
@@ -28,8 +29,7 @@ def test_scalar_type_min_max(type_tuple):
         else:
             min = torch.iinfo(torch_type).min
             max = torch.iinfo(torch_type).max
-    
+
     print(t, min, max, t.min(), t.max())
     assert min == t.min()
     assert max == t.max()
-    

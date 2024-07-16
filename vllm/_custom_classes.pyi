@@ -1,4 +1,5 @@
 from typing import Optional, Union
+
 from .scalar_type import NanRepr
 
 class ScalarType:
@@ -31,9 +32,9 @@ class ScalarType:
         (i.e. follows IEEE 754 conventions).
         """
         ...
-        
+
     @classmethod
-    def fn(cls, exponent: int, mantissa: int, finite_values_only: bool, 
+    def fn(cls, exponent: int, mantissa: int, finite_values_only: bool,
            nan_repr: int) -> ScalarType:
         """
         Create a non-standard floating point type 
@@ -72,7 +73,7 @@ class ScalarType:
     def size_bits(self) -> int:
         "Total size of the scalar type in bits."
         ...
-        
+
     @property
     def nan_repr(self) -> NanRepr:
         """
@@ -106,7 +107,7 @@ class ScalarType:
     def is_floating_point(self) -> bool:
         "If the type is a floating point type"
         ...
-        
+
     def is_ieee_754(self) -> bool:
         "If the type is a floating point type that follows IEEE 754 conventions"
         ...
@@ -114,7 +115,7 @@ class ScalarType:
     def has_nans(self) -> bool:
         "If the type is floating point and supports NaN(s)"
         ...
-    
+
     def has_infs(self) -> bool:
         "If the type is floating point and supports infinity"
         ...

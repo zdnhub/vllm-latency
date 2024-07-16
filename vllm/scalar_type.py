@@ -1,11 +1,14 @@
-from ._custom_classes import ScalarType
 from enum import Enum
+
+from ._custom_classes import ScalarType
+
 
 # Mirrors enum in `scalar_type.hpp`
 class NanRepr(Enum):
-    IEEE_754 = 0           # nans are: Exp all 1s, mantissa not all 0s
-    NONE = 1               # nans are not supported
-    EXTD_RANGE_MAX_MIN = 2 # nans are: Exp all 1s, mantissa all 1s
+    IEEE_754 = 0  # nans are: Exp all 1s, mantissa not all 0s
+    NONE = 1  # nans are not supported
+    EXTD_RANGE_MAX_MIN = 2  # nans are: Exp all 1s, mantissa all 1s
+
 
 class scalar_types:
     s4 = ScalarType.s(4, None)
