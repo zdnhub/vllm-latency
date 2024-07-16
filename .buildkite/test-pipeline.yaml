@@ -12,7 +12,6 @@ steps:
   fast_check_only: true
   commands:
   - pytest -v -s async_engine # Async Engine
-  - bash ../.buildkite/download-images.sh # Inputs 
   - pytest -v -s test_inputs.py
   - pytest -v -s multimodal
   - pytest -v -s test_utils.py # Utils
@@ -46,9 +45,7 @@ steps:
   fast_check: true
   commands:
   - pip install https://github.com/flashinfer-ai/flashinfer/releases/download/v0.0.8/flashinfer-0.0.8+cu121torch2.3-cp310-cp310-linux_x86_64.whl
-  - VLLM_ATTENTION_BACKEND=XFORMERS pytest -v -s basic_correctness/test_basic_correctness.py
-  - VLLM_ATTENTION_BACKEND=FLASH_ATTN pytest -v -s basic_correctness/test_basic_correctness.py
-  - VLLM_ATTENTION_BACKEND=FLASHINFER pytest -v -s basic_correctness/test_basic_correctness.py
+  - pytest -v -s basic_correctness/test_basic_correctness.py
   - VLLM_ATTENTION_BACKEND=XFORMERS pytest -v -s basic_correctness/test_chunked_prefill.py
   - VLLM_ATTENTION_BACKEND=FLASH_ATTN pytest -v -s basic_correctness/test_chunked_prefill.py
   - VLLM_TEST_ENABLE_ARTIFICIAL_PREEMPT=1 pytest -v -s basic_correctness/test_preemption.py
@@ -68,12 +65,22 @@ steps:
   - pytest -v -s distributed/test_comm_ops.py
   - pytest -v -s distributed/test_shm_broadcast.py
 
+- label: 2 Node Tests (4 GPUs in total)
+  working_dir: "/vllm-workspace/tests"
+  num_gpus: 2
+  num_nodes: 2
+  commands:
+  - # the following commands are for the first node, with ip 192.168.10.10 (ray environment already set up)
+    - VLLM_TEST_SAME_HOST=0 torchrun --nnodes 2 --nproc-per-node=2 --rdzv_backend=c10d --rdzv_endpoint=192.168.10.10 distributed/test_same_node.py
+    - pytest -v -s distributed/test_pipeline_parallel.py
+  - # the following commands are for the second node, with ip 192.168.10.11 (ray environment already set up)
+    - VLLM_TEST_SAME_HOST=0 torchrun --nnodes 2 --nproc-per-node=2 --rdzv_backend=c10d --rdzv_endpoint=192.168.10.10 distributed/test_same_node.py
+
 - label: Distributed Tests (2 GPUs)
   mirror_hardwares: [amd]
   working_dir: "/vllm-workspace/tests"
   num_gpus: 2
   commands:
-  - bash ../.buildkite/download-images.sh
   - VLLM_TEST_SAME_HOST=1 torchrun --nproc-per-node=4 distributed/test_same_node.py
   - TEST_DIST_MODEL=facebook/opt-125m DISTRIBUTED_EXECUTOR_BACKEND=ray pytest -v -s distributed/test_basic_distributed_correctness.py
   - TEST_DIST_MODEL=meta-llama/Llama-2-7b-hf DISTRIBUTED_EXECUTOR_BACKEND=ray pytest -v -s distributed/test_basic_distributed_correctness.py
@@ -108,12 +115,7 @@ steps:
   working_dir: "/vllm-workspace/tests"
   num_gpus: 4
   commands:
-  - TP_SIZE=2 PP_SIZE=2 EAGER_MODE=1 CHUNKED_PREFILL=1 pytest -v -s distributed/test_pipeline_parallel.py
-  - TP_SIZE=2 PP_SIZE=2 EAGER_MODE=1 CHUNKED_PREFILL=0 pytest -v -s distributed/test_pipeline_parallel.py
-  - TP_SIZE=1 PP_SIZE=3 EAGER_MODE=1 CHUNKED_PREFILL=0 pytest -v -s distributed/test_pipeline_parallel.py
-  - PP_SIZE=4 EAGER_MODE=1 CHUNKED_PREFILL=1 pytest -v -s distributed/test_pipeline_parallel.py
-  - PP_SIZE=4 EAGER_MODE=1 CHUNKED_PREFILL=0 pytest -v -s distributed/test_pipeline_parallel.py
-
+  - pytest -v -s distributed/test_pipeline_parallel.py
 
 - label: Engine Test
   mirror_hardwares: [amd]
@@ -146,7 +148,6 @@ steps:
 - label: Inputs Test
   #mirror_hardwares: [amd]
   commands:
-    - bash ../.buildkite/download-images.sh
     - pytest -v -s test_inputs.py
     - pytest -v -s multimodal
 
@@ -166,7 +167,6 @@ steps:
 - label: Vision Language Models Test
   mirror_hardwares: [amd]
   commands:
-    - bash ../.buildkite/download-images.sh
     - pytest -v -s models -m vlm
 
 - label: Prefix Caching Test
@@ -183,7 +183,9 @@ steps:
   command: pytest -v -s test_logits_processor.py
 
 - label: Utils Test
-  command: pytest -v -s test_utils.py
+  commands:
+    - pytest -v -s test_utils.py
+    - pytest -v -s test_embedded_commit.py
 
 - label: Worker Test
   mirror_hardwares: [amd]
@@ -213,7 +215,10 @@ steps:
 
 - label: Tensorizer Test
   #mirror_hardwares: [amd]
-  command: apt-get install curl libsodium23 && pytest -v -s tensorizer_loader
+  commands:
+    - apt-get install curl libsodium23
+    - export VLLM_WORKER_MULTIPROC_METHOD=spawn
+    - pytest -v -s tensorizer_loader
 
 - label: Metrics Test
   mirror_hardwares: [amd]
