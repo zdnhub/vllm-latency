@@ -5,7 +5,7 @@ import torch
 
 from vllm.scalar_type import ScalarType, scalar_types
 
-SUPPORTED_GPTQ_QUANT_TYPES = [scalar_types.u4z8, scalar_types.u8z128]
+SUPPORTED_GPTQ_QUANT_TYPES = [scalar_types.u4b8, scalar_types.u8b128]
 SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
 
 
@@ -62,7 +62,7 @@ def quantize_weights(w: torch.Tensor, quant_type: ScalarType, group_size: int):
     max_val = torch.abs(torch.max(w, 0, keepdim=True).values)
     min_val = torch.abs(torch.min(w, 0, keepdim=True).values)
 
-    # If the zero_point is such that there are no possible negative/positive
+    # If the bias is such that there are no possible negative/positive
     #  values, set the max value to inf to avoid divide by 0
     max_q_val = quant_type.max() if quant_type.max() != 0 else torch.inf
     min_q_val = quant_type.min() if quant_type.min() != 0 else torch.inf

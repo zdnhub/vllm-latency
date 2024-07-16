@@ -26,21 +26,21 @@ class ScalarType {
   };
 
   constexpr ScalarType(bool _signed, int64_t exponent, int64_t mantissa,
-                       int64_t zero_point, bool finite_values_only = false,
+                       int64_t bias, bool finite_values_only = false,
                        NanRepr nan_repr = NAN_IEEE_754)
       : exponent(exponent),
         mantissa(mantissa),
-        zero_point(zero_point),
+        bias(bias),
         _signed(_signed),
         finite_values_only(finite_values_only),
         nan_repr(nan_repr){};
 
-  static constexpr ScalarType s(int64_t size_bits, int64_t zero_point = 0) {
-    return ScalarType(true, 0, size_bits - 1, zero_point);
+  static constexpr ScalarType s(int64_t size_bits, int64_t bias = 0) {
+    return ScalarType(true, 0, size_bits - 1, bias);
   }
 
-  static constexpr ScalarType u(int64_t size_bits, int64_t zero_point = 0) {
-    return ScalarType(false, 0, size_bits, zero_point);
+  static constexpr ScalarType u(int64_t size_bits, int64_t bias = 0) {
+    return ScalarType(false, 0, size_bits, bias);
   }
 
   // IEEE 754 compliant floating point type
@@ -61,11 +61,11 @@ class ScalarType {
                       nan_repr);
   }
 
-  int64_t const exponent;    // size of the exponent field (0 for integer types)
-  int64_t const mantissa;    // size of the mantissa field (size of the integer
-                             // excluding the sign bit for integer types)
-  int64_t const zero_point;  // stored values equal value + bias,
-                             // used for quantized type
+  int64_t const exponent;  // size of the exponent field (0 for integer types)
+  int64_t const mantissa;  // size of the mantissa field (size of the integer
+                           // excluding the sign bit for integer types)
+  int64_t const bias;      // stored values equal value + bias,
+                           // used for quantized type
   bool const _signed;  // flag if the type supports negative numbers (i.e. has a
                        // sign bit)
 
@@ -86,7 +86,7 @@ class ScalarType {
   bool has_infs() const {
     return is_floating_point() && finite_values_only == false;
   }
-  bool has_zero_point() const { return zero_point != 0; }
+  bool has_bias() const { return bias != 0; }
 
  private:
   double _floating_point_max() const {
@@ -165,9 +165,7 @@ class ScalarType {
   // (accounting for bias if there is one)
   std::variant<int64_t, double> max() const {
     return std::visit(
-        [this](auto x) -> std::variant<int64_t, double> {
-          return {x - zero_point};
-        },
+        [this](auto x) -> std::variant<int64_t, double> { return {x - bias}; },
         _raw_max());
   }
 
@@ -175,9 +173,7 @@ class ScalarType {
   // (accounting for bias if there is one)
   std::variant<int64_t, double> min() const {
     return std::visit(
-        [this](auto x) -> std::variant<int64_t, double> {
-          return {x - zero_point};
-        },
+        [this](auto x) -> std::variant<int64_t, double> { return {x - bias}; },
         _raw_min());
   }
 
@@ -198,8 +194,8 @@ class ScalarType {
       return ret;
     } else {
       auto ret = ((is_signed()) ? "s" : "u") + std::to_string(size_bits());
-      if (has_zero_point()) {
-        ret += "z" + std::to_string(zero_point);
+      if (has_bias()) {
+        ret += "z" + std::to_string(bias);
       }
       return ret;
     }
@@ -207,7 +203,7 @@ class ScalarType {
 
   bool operator==(ScalarType const& other) const {
     return mantissa == other.mantissa && exponent == other.exponent &&
-           zero_point == other.zero_point && _signed == other._signed;
+           bias == other.bias && _signed == other._signed;
   }
 };
 
@@ -289,7 +285,7 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
     // Bind Properties
     bind_readonly_property(cls, "mantissa", &Base::mantissa);
     bind_readonly_property(cls, "exponent", &Base::exponent);
-    bind_readonly_property(cls, "zero_point", &Base::zero_point);
+    bind_readonly_property(cls, "bias", &Base::bias);
     bind_readonly_property(cls, "size_bits", &Base::size_bits);
 
     // Bind member functions
@@ -299,7 +295,7 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
     bind_function(cls, "is_ieee_754", &Base::is_ieee_754);
     bind_function(cls, "has_nans", &Base::has_nans);
     bind_function(cls, "has_infs", &Base::has_infs);
-    bind_function(cls, "has_zero_point", &Base::has_zero_point);
+    bind_function(cls, "has_bias", &Base::has_bias);
 
     bind_function(cls, "max", [](SelfPtr const& self) {
       return std::visit([](auto arg) { return c10::IValue(arg); },
@@ -340,7 +336,7 @@ static inline constexpr auto kFE8M7 = ScalarType::f(8, 7);    // BFloat16
 static inline constexpr auto kFE5M10 = ScalarType::f(5, 10);  // Float16
 
 // "gptq" types
-static inline constexpr auto ku4z8 = ScalarType::u(4, 8);
-static inline constexpr auto ku8z128 = ScalarType::u(8, 128);
+static inline constexpr auto kU4B8 = ScalarType::u(4, 8);
+static inline constexpr auto kU8B128 = ScalarType::u(8, 128);
 
 };  // namespace vllm

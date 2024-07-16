@@ -18,8 +18,8 @@ class scalar_types:
     fE5M10 = ScalarType.f(5, 10)
 
     # "gptq" types
-    u4z8 = ScalarType.u(4, 8)
-    u8z128 = ScalarType.u(8, 128)
+    u4b8 = ScalarType.u(4, 8)
+    u8b128 = ScalarType.u(8, 128)
 
     # colloquial names
     bfloat16 = fE8M7

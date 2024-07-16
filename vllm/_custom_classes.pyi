@@ -5,7 +5,9 @@ class ScalarType:
     """
     ScalarType can represent a wide range of floating point and integer types,
     in particular it can be used to represent sub-byte data types (something
-    that torch.dtype currently does not support).
+    that torch.dtype currently does not support). It is also cabaable of 
+    representing types with a bias, i.e. the stored_value = value + bias, this
+    is useful for quantized types (e.g. standard GPTQ 4bit uses a bias of 8).
     """
 
     def __init__(self, exponent: int, mantissa: int, bias: int,
@@ -13,12 +15,12 @@ class ScalarType:
         ...
 
     @classmethod
-    def s(cls, size_bits: int, zero_point: Optional[int]) -> ScalarType:
+    def s(cls, size_bits: int, bias: Optional[int]) -> ScalarType:
         "Create a signed integer scalar type (size_bits includes the sign-bit)."
         ...
 
     @classmethod
-    def u(cls, size_bits: int, zero_point: Optional[int]) -> ScalarType:
+    def u(cls, size_bits: int, bias: Optional[int]) -> ScalarType:
         """Create a signed integer scalar type."""
         ...
 
