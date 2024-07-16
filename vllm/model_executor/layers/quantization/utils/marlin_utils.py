@@ -3,16 +3,15 @@ from typing import List, Optional, Tuple
 import torch
 
 from vllm import _custom_ops as ops
-from vllm import scalar_type
+from vllm.scalar_type import scalar_types, ScalarType
 from vllm.platforms import current_platform
-from vllm.scalar_type import ScalarType
 
 GPTQ_MARLIN_TILE = 16
 GPTQ_MARLIN_MIN_THREAD_N = 64
 GPTQ_MARLIN_MIN_THREAD_K = 128
 GPTQ_MARLIN_MAX_PARALLEL = 16
 
-GPTQ_MARLIN_SUPPORTED_QUANT_TYPES = [scalar_type.u4b8, scalar_type.u8b128]
+GPTQ_MARLIN_SUPPORTED_QUANT_TYPES = [scalar_types.u4z8, scalar_types.u8z128]
 GPTQ_MARLIN_SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
 GPTQ_MARLIN_SUPPORTED_SYM = [True]
 GTPQ_MARLIN_UNSUPPORTED_GROUP_SIZE_ACT_ORDER = [-1]

@@ -1,21 +1,34 @@
 from typing import Optional, Union
+from .scalar_type import NanRepr
 
 class ScalarType:
+    """
+    ScalarType can represent a wide range of floating point and integer types,
+    in particular it can be used to represent sub-byte data types (something
+    that torch.dtype currently does not support).
+    """
 
-    def __init__(self, mantissa: int, exponent: int, bias: int,
+    def __init__(self, exponent: int, mantissa: int, bias: int,
                  signed: bool) -> None:
         ...
 
     @classmethod
-    def s(cls, size_bits: int, bias: Optional[int]) -> ScalarType:
+    def s(cls, size_bits: int, zero_point: Optional[int]) -> ScalarType:
+        "Create a signed integer scalar type (size_bits includes the sign-bit)."
         ...
 
     @classmethod
-    def u(cls, size_bits: int, bias: Optional[int]) -> ScalarType:
+    def u(cls, size_bits: int, zero_point: Optional[int]) -> ScalarType:
+        """Create a signed integer scalar type."""
         ...
 
     @classmethod
-    def f(cls, mantissa: int, exponent: int) -> ScalarType:
+    def f(cls, exponent: int, mantissa: int) -> ScalarType:
+        ...
+        
+    @classmethod
+    def fn(cls, exponent: int, mantissa: int, finite_values_only: bool, 
+           nan_repr: int) -> ScalarType:
         ...
 
     @property
@@ -33,17 +46,15 @@ class ScalarType:
     @property
     def size_bits(self) -> int:
         ...
+        
+    @property
+    def nan_repr(self) -> NanRepr:
+        ...
 
     def max(self) -> Union[int, float]:
         ...
 
     def min(self) -> Union[int, float]:
-        ...
-
-    def unbiased_max(self) -> Union[int, float]:
-        ...
-
-    def unbiased_min(self) -> Union[int, float]:
         ...
 
     def is_signed(self) -> bool:
@@ -54,8 +65,17 @@ class ScalarType:
 
     def is_floating_point(self) -> bool:
         ...
+        
+    def is_ieee_754(self) -> bool:
+        ...
 
-    def has_bias(self) -> bool:
+    def has_nans(self) -> bool:
+        ...
+    
+    def has_infs(self) -> bool:
+        ...
+
+    def has_zero_points(self) -> bool:
         ...
 
     def __eq__(self, value: object) -> bool:

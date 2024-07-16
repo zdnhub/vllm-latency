@@ -4,7 +4,7 @@ import torch
 from torch.nn.parameter import Parameter
 
 from vllm import _custom_ops as ops
-from vllm import scalar_type
+from vllm.scalar_type import scalar_types
 from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import LinearBase, LinearMethodBase
 from vllm.model_executor.layers.quantization.base_config import (
@@ -18,7 +18,7 @@ GPTQ_MARLIN_24_MIN_THREAD_N = 128
 GPTQ_MARLIN_24_MIN_THREAD_K = 128
 GPTQ_MARLIN_24_MAX_PARALLEL = 64
 
-GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES = [scalar_type.u4b8, scalar_type.u8b128]
+GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES = [scalar_types.u4z8, scalar_types.u8z128]
 GPTQ_MARLIN_24_SUPPORTED_GROUP_SIZES = [-1, 128]
 GPTQ_MARLIN_24_SUPPORTED_SYM = [True]
 
@@ -33,8 +33,8 @@ class GPTQMarlin24Config(QuantizationConfig):
         group_size: int,
     ) -> None:
         self.quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_type.u4z8,
+            8: scalar_type.u8z128,
         }[weight_bits]
         self.group_size = group_size
 

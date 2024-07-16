@@ -6,8 +6,8 @@ logger = init_logger(__name__)
 
 try:
     # ruff: noqa: F401
-    import vllm._C
+    import vllm._core_C
 except ImportError as e:
-    logger.warning("Failed to import from vllm._C with %r", e)
+    logger.warning("Failed to import from vllm._core_C with %r", e)
 
-ScalarType = torch.classes._C.ScalarType
+ScalarType = torch.classes._core_C.ScalarType

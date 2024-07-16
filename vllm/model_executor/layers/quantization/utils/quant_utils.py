@@ -3,10 +3,9 @@
 import numpy
 import torch
 
-from vllm import scalar_type
-from vllm.scalar_type import ScalarType
+from vllm.scalar_type import ScalarType, scalar_types
 
-SUPPORTED_GPTQ_QUANT_TYPES = [scalar_type.u4b8, scalar_type.u8b128]
+SUPPORTED_GPTQ_QUANT_TYPES = [scalar_types.u4z8, scalar_types.u8z128]
 SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
 
 

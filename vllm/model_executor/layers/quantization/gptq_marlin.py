@@ -30,8 +30,8 @@ class GPTQMarlinConfig(QuantizationConfig):
             desc_act = False
 
         self.quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_type.u4z8,
+            8: scalar_type.u8z128,
         }[weight_bits]
 
         self.pack_factor = 32 // self.quant_type.size_bits  # packed into int32
@@ -118,8 +118,8 @@ class GPTQMarlinConfig(QuantizationConfig):
         desc_act = quant_config.get("desc_act", None)
 
         quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_type.u4z8,
+            8: scalar_type.u8z128,
         }.get(num_bits)
 
         # If we cannot find the info needed in the config, cannot convert.

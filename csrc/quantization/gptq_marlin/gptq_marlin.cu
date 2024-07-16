@@ -1583,8 +1583,8 @@ void marlin_mm(const void* A, const void* B, void* C, void* s, void* g_idx,
                bool has_act_order, bool is_k_full, int num_groups,
                int group_size, int dev, cudaStream_t stream, int thread_k,
                int thread_n, int sms, int max_par) {
-  TORCH_CHECK(q_type == vllm::kU4B8 || q_type == vllm::kU8B128,
-              "num_bits must be u4b8 or u8b128. Got = ", q_type.str());
+  TORCH_CHECK(q_type == vllm::ku4z8 || q_type == vllm::ku8z128,
+              "num_bits must be u4z8 or u8z128. Got = ", q_type.str());
   TORCH_CHECK(prob_m > 0 && prob_n > 0 && prob_k > 0, "Invalid MNK = [", prob_m,
               ", ", prob_n, ", ", prob_k, "]");
 
@@ -1743,8 +1743,8 @@ torch::Tensor gptq_marlin_gemm(torch::Tensor& a, torch::Tensor& b_q_weight,
                                int64_t size_m, int64_t size_n, int64_t size_k,
                                bool is_k_full) {
   // Verify num_bits
-  TORCH_CHECK(*b_q_type == vllm::kU4B8 || *b_q_type == vllm::kU8B128,
-              "num_bits must be u4b8 or u8b128. Got = ", b_q_type->str());
+  TORCH_CHECK(*b_q_type == vllm::ku4z8 || *b_q_type == vllm::ku8z128,
+              "num_bits must be u4z8 or u8z128. Got = ", b_q_type->str());
   int pack_factor = 32 / b_q_type->size_bits();
 
   // Verify A

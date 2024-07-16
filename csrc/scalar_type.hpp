@@ -1,45 +1,131 @@
 #pragma once
 
 #include <torch/custom_class.h>
+#include <iostream>
 
 namespace vllm {
 
+//
+//  ScalarType can represent a wide range of floating point and integer types,
+//  in particular it can be used to represent sub-byte data types (something
+//  that torch.dtype currently does not support).
+//
+//  ScalarTypeTorch is a subclass of ScalarType that is compatible with
+//  TORCH_LIBRARY, making it accessible from Python as well meaning this class
+//  can be used as a argument for custom operators, helping to simplify these
+//  interfaces.
+//
 class ScalarType {
  public:
-  constexpr ScalarType(int64_t mantissa, int64_t exponent, int64_t bias,
-                       bool _signed)
-      : mantissa(mantissa), exponent(exponent), bias(bias), _signed(_signed){};
+  enum NanRepr : int64_t {
+    NAN_IEEE_754 = 0,            // nans are: exp all 1s, mantissa not all 0s
+    NAN_NONE = 1,                // nans are not supported
+    NAN_EXTD_RANGE_MAX_MIN = 2,  // nans are: exp all 1s, mantissa all 1s
 
-  static constexpr ScalarType s(int64_t size_bits, int64_t bias = 0) {
-    return ScalarType(size_bits - 1, 0, bias, true);
+    NAN_REPR_ID_MAX
+  };
+
+  constexpr ScalarType(bool _signed, int64_t exponent, int64_t mantissa,
+                       int64_t zero_point, bool finite_values_only = false,
+                       NanRepr nan_repr = NAN_IEEE_754)
+      : exponent(exponent),
+        mantissa(mantissa),
+        zero_point(zero_point),
+        _signed(_signed),
+        finite_values_only(finite_values_only),
+        nan_repr(nan_repr){};
+
+  static constexpr ScalarType s(int64_t size_bits, int64_t zero_point = 0) {
+    return ScalarType(true, 0, size_bits - 1, zero_point);
   }
 
-  static constexpr ScalarType u(int64_t size_bits, int64_t bias = 0) {
-    return ScalarType(size_bits, 0, bias, false);
+  static constexpr ScalarType u(int64_t size_bits, int64_t zero_point = 0) {
+    return ScalarType(false, 0, size_bits, zero_point);
   }
 
-  static constexpr ScalarType f(int64_t mantissa, int64_t exponent) {
-    return ScalarType(mantissa, exponent, 0, true);
+  // IEEE 754 compliant floating point type
+  static constexpr ScalarType f(int64_t exponent, int64_t mantissa) {
+    TORCH_CHECK(mantissa > 0 && exponent > 0);
+    return ScalarType(true, exponent, mantissa, 0, false, NAN_IEEE_754);
   }
 
-  int64_t const mantissa = 0;
-  int64_t const exponent = 0;
-  int64_t const bias = 0;
-  bool const _signed = true;
+  // IEEE 754 non-compliant floating point type
+  static constexpr ScalarType fn(int64_t exponent, int64_t mantissa,
+                                 bool finite_values_only, NanRepr nan_repr) {
+    TORCH_CHECK(nan_repr < NAN_REPR_ID_MAX, "Invalid NanRepr");
+    TORCH_CHECK(mantissa > 0 && exponent > 0);
+    TORCH_CHECK(nan_repr != NAN_IEEE_754,
+                "use `f` constructor for IEEE 754 compliant types");
+    return ScalarType(true, exponent, mantissa, 0, finite_values_only,
+                      nan_repr);
+  }
+
+  // when representing an integer type, the exponent is 0 and the mantissa size
+  // represents the size of the integer (excluding the sign bit if there is one)
+  int64_t const exponent;
+  int64_t const mantissa;
+  int64_t const zero_point;
+  bool const _signed;
+
+  // Floating point info
+  bool const finite_values_only;  // i.e. no +/-inf if true
+  NanRepr const nan_repr;
 
   int64_t size_bits() const { return mantissa + exponent + is_signed(); }
   bool is_signed() const { return _signed; }
   bool is_integer() const { return exponent == 0; }
   bool is_floating_point() const { return exponent > 0; }
-  bool has_bias() const { return bias != 0; }
+  bool is_ieee_754() const {
+    return is_floating_point() && finite_values_only == false &&
+           nan_repr == NAN_IEEE_754;
+  }
+  bool has_nans() const { return is_floating_point() && nan_repr != NAN_NONE; }
+  bool has_infs() const {
+    return is_floating_point() && finite_values_only == false;
+  }
+  bool has_zero_point() const { return zero_point != 0; }
 
-  std::variant<int64_t, double> unbiased_max() const {
+ private:
+  double _floating_point_max() const {
+    TORCH_CHECK(mantissa <= 52 && exponent <= 11,
+                "Cannot represent max/min as a double for type ", str());
+
+    uint64_t max_mantissa = (uint64_t(1) << mantissa) - 1;
+    if (nan_repr == NAN_EXTD_RANGE_MAX_MIN) {
+      max_mantissa -= 1;
+    }
+
+    uint64_t max_exponent = (uint64_t(1) << exponent) - 2;
+    if (nan_repr == NAN_EXTD_RANGE_MAX_MIN || nan_repr == NAN_NONE) {
+      TORCH_CHECK(exponent < 11,
+                  "Cannot represent max/min as a double for type ", str());
+      max_exponent += 1;
+    }
+
+    // adjust the exponent to match that off a double
+    //  for now we assume the exponent bias is the standard 2^(e-1) -1, (where e
+    //  is the exponent bits), there is some precedent for non-standard biases,
+    //  example `float8_e4m3b11fnuz` here: https://github.com/jax-ml/ml_dtypes
+    //  but to avoid premature over complication we are just assuming the
+    //  standard exponent bias until there is a need to support non-standard
+    //  biases
+    uint64_t exponent_bias = (uint64_t(1) << (exponent - 1)) - 1;
+    uint64_t exponent_bias_double = (uint64_t(1) << 10) - 1;  // double e = 11
+
+    uint64_t max_exponent_double =
+        max_exponent - exponent_bias + exponent_bias_double;
+
+    // shift the mantissa into the position for a double and
+    // the exponent
+    uint64_t double_raw =
+        (max_mantissa << (52 - mantissa)) | (max_exponent_double << 52);
+
+    return *reinterpret_cast<double*>(&double_raw);
+  }
+
+  std::variant<int64_t, double> _raw_max() const {
     if (is_floating_point()) {
-      // TODO: return max floating point value as double
-      //   see `dequant_8bit<bfloat16>` in `csrc/quantization/fp8/fp8_marlin.cu`
-      //   to see how this could be done
-      TORCH_CHECK_NOT_IMPLEMENTED(is_floating_point(), "Not implemented");
-      return {nan("")};
+      return {_floating_point_max()};
     } else {
       TORCH_CHECK(size_bits() < 64 || size_bits() == 64 && is_signed(),
                   "Cannot represent max as a int64_t");
@@ -47,13 +133,16 @@ class ScalarType {
     }
   }
 
-  std::variant<int64_t, double> unbiased_min() const {
+  std::variant<int64_t, double> _raw_min() const {
     if (is_floating_point()) {
-      // TODO: return min floating point value as double
-      //   see `dequant_8bit<bfloat16>` in `csrc/quantization/fp8/fp8_marlin.cu`
-      //   to see how this could be done
-      TORCH_CHECK_NOT_IMPLEMENTED(is_floating_point(), "Not implemented");
-      return {nan("")};
+      TORCH_CHECK(is_signed(),
+                  "We currently assume all floating point types are signed");
+      constexpr uint64_t sign_bit_double = (uint64_t(1) << 63);
+
+      double max = _floating_point_max();
+      uint64_t max_raw = *reinterpret_cast<uint64_t*>(&max);
+      uint64_t min_raw = max_raw | sign_bit_double;
+      return {*reinterpret_cast<double*>(&min_raw)};
     } else {
       TORCH_CHECK(!is_signed() || size_bits() <= 64,
                   "Cannot represent min as a int64_t");
@@ -68,30 +157,42 @@ class ScalarType {
     }
   }
 
+ public:
   std::variant<int64_t, double> max() const {
     return std::visit(
-        [this](auto x) -> std::variant<int64_t, double> { return {x - bias}; },
-        unbiased_max());
+        [this](auto x) -> std::variant<int64_t, double> {
+          return {x - zero_point};
+        },
+        _raw_max());
   }
 
   std::variant<int64_t, double> min() const {
     return std::visit(
-        [this](auto x) -> std::variant<int64_t, double> { return {x - bias}; },
-        unbiased_min());
+        [this](auto x) -> std::variant<int64_t, double> {
+          return {x - zero_point};
+        },
+        _raw_min());
   }
 
   std::string str() const {
     if (is_floating_point()) {
       auto ret =
-          "fE " + std::to_string(exponent) + "M" + std::to_string(mantissa);
-      if (!is_signed()) {
-        ret += "u";
+          "fE" + std::to_string(exponent) + "M" + std::to_string(mantissa);
+      if (!is_ieee_754()) {
+        // follow convention of:
+        //   https://github.com/jax-ml/ml_dtypes
+        if (finite_values_only) {
+          ret += "f";
+        }
+        if (nan_repr != NAN_NONE) {
+          ret += "n";
+        }
       }
       return ret;
     } else {
       auto ret = ((is_signed()) ? "s" : "u") + std::to_string(size_bits());
-      if (has_bias()) {
-        ret += "b" + std::to_string(bias);
+      if (has_zero_point()) {
+        ret += "z" + std::to_string(zero_point);
       }
       return ret;
     }
@@ -99,19 +200,20 @@ class ScalarType {
 
   bool operator==(ScalarType const& other) const {
     return mantissa == other.mantissa && exponent == other.exponent &&
-           bias == other.bias && _signed == other._signed;
+           zero_point == other.zero_point && _signed == other._signed;
   }
 };
 
 // Create a TORCH_LIBRARY compatible version of ScalarType (i.e. inherit from
-//  torch::CustomClassHolder), we cannot have ScalarType inherit from
-//  torch::CustomClassHolder and have a constexpr constructor at the same time
-//  (torch::CustomClassHolder does not have a constexpr destructor)
+//  torch::CustomClassHolder), we use multiple inheritance here since we cannot
+//  have ScalarType inherit from torch::CustomClassHolder and have a constexpr
+//  constructor at the same time (torch::CustomClassHolder does not have a
+//  constexpr destructor)
 class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
  public:
-  ScalarTypeTorch(int64_t mantissa, int64_t exponent, int64_t bias,
+  ScalarTypeTorch(int64_t exponent, int64_t mantissa, int64_t bias,
                   bool _signed)
-      : ScalarType(mantissa, exponent, bias, _signed){};
+      : ScalarType(exponent, mantissa, bias, _signed){};
 
   ScalarTypeTorch(ScalarType type) : ScalarType(type){};
 
@@ -129,8 +231,14 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
         ScalarType::u(size_bits, bias.value_or(0)));
   }
 
-  static SelfPtr f(int64_t mantissa, int64_t exponent) {
-    return c10::make_intrusive<Self>(ScalarType::f(mantissa, exponent));
+  static SelfPtr f(int64_t exponent, int64_t mantissa) {
+    return c10::make_intrusive<Self>(ScalarType::f(exponent, mantissa));
+  }
+
+  static SelfPtr fn(int64_t exponent, int64_t mantissa, bool finite_values_only,
+                    int64_t nan_repr) {
+    return c10::make_intrusive<Self>(ScalarType::fn(
+        exponent, mantissa, finite_values_only, NanRepr(nan_repr)));
   }
 
   template <typename T>
@@ -174,14 +282,18 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
     // Bind Properties
     bind_readonly_property(cls, "mantissa", &Base::mantissa);
     bind_readonly_property(cls, "exponent", &Base::exponent);
-    bind_readonly_property(cls, "bias", &Base::bias);
+    bind_readonly_property(cls, "zero_point", &Base::zero_point);
     bind_readonly_property(cls, "size_bits", &Base::size_bits);
 
     // Bind member functions
     bind_function(cls, "is_signed", &Base::is_signed);
     bind_function(cls, "is_integer", &Base::is_integer);
     bind_function(cls, "is_floating_point", &Base::is_floating_point);
-    bind_function(cls, "has_bias", &Base::has_bias);
+    bind_function(cls, "is_ieee_754", &Base::is_ieee_754);
+    bind_function(cls, "has_nans", &Base::has_nans);
+    bind_function(cls, "has_infs", &Base::has_infs);
+    bind_function(cls, "has_zero_point", &Base::has_zero_point);
+
     bind_function(cls, "max", [](SelfPtr const& self) {
       return std::visit([](auto arg) { return c10::IValue(arg); },
                         self.get()->max());
@@ -190,14 +302,7 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
       return std::visit([](auto arg) { return c10::IValue(arg); },
                         self.get()->min());
     });
-    bind_function(cls, "unbiased_max", [](SelfPtr const& self) {
-      return std::visit([](auto arg) { return c10::IValue(arg); },
-                        self.get()->unbiased_max());
-    });
-    bind_function(cls, "unbiased_min", [](SelfPtr const& self) {
-      return std::visit([](auto arg) { return c10::IValue(arg); },
-                        self.get()->unbiased_min());
-    });
+
     bind_function(cls, "__str__", &Base::str);
     bind_function(cls, "__eq__", [](SelfPtr const& self, SelfPtr const& other) {
       return *self == *other;
@@ -210,6 +315,7 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
     bind_static_function(cls, "s", &ScalarTypeTorch::s);
     bind_static_function(cls, "u", &ScalarTypeTorch::u);
     bind_static_function(cls, "f", &ScalarTypeTorch::f);
+    bind_static_function(cls, "fn", &ScalarTypeTorch::fn);
   }
 };
 
@@ -218,15 +324,16 @@ using ScalarTypeTorchPtr = c10::intrusive_ptr<ScalarTypeTorch>;
 // Common types
 static inline constexpr auto kS4 = ScalarType::s(4);
 static inline constexpr auto kU4 = ScalarType::u(4);
-static inline constexpr auto kS8 = ScalarType::s(8);          // int8
-static inline constexpr auto kU8 = ScalarType::u(8);          // uint8
-static inline constexpr auto kFE3M4 = ScalarType::f(4, 3);    // FP8_E3M4
-static inline constexpr auto kFE4M3 = ScalarType::f(3, 4);    // FP8_E4M3
-static inline constexpr auto kFE8M7 = ScalarType::f(7, 8);    // BFloat16
-static inline constexpr auto kFE5M10 = ScalarType::f(5, 11);  // Float16
+static inline constexpr auto kS8 = ScalarType::s(8);  // int8
+static inline constexpr auto kU8 = ScalarType::u(8);  // uint8
+static inline constexpr auto kFE3M4fn = ScalarType::fn(
+    3, 4, true, ScalarType::NAN_EXTD_RANGE_MAX_MIN);          // FP8_E3M4fn
+static inline constexpr auto kFE5M2 = ScalarType::f(5, 2);    // FP8_E5M2
+static inline constexpr auto kFE8M7 = ScalarType::f(8, 7);    // BFloat16
+static inline constexpr auto kFE5M10 = ScalarType::f(5, 10);  // Float16
 
 // "gptq" types
-static inline constexpr auto kU4B8 = ScalarType::u(4, 8);
-static inline constexpr auto kU8B128 = ScalarType::u(8, 128);
+static inline constexpr auto ku4z8 = ScalarType::u(4, 8);
+static inline constexpr auto ku8z128 = ScalarType::u(8, 128);
 
 };  // namespace vllm

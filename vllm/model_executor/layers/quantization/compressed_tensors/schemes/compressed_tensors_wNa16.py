@@ -24,8 +24,8 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
                  num_bits: int,
                  group_size: Optional[int] = None):
         self.quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_type.u4z8,
+            8: scalar_type.u8z128,
         }[num_bits]
 
         self.pack_factor = 32 // self.quant_type.size_bits
