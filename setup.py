@@ -245,10 +245,6 @@ def _build_custom_ops() -> bool:
     return _is_cuda() or _is_hip() or _is_cpu()
 
 
-def _build_custom_classes() -> bool:
-    return True
-
-
 def _install_punica() -> bool:
     return envs.VLLM_INSTALL_PUNICA_KERNELS
 
@@ -461,6 +457,6 @@ setup(
     extras_require={
         "tensorizer": ["tensorizer>=2.9.0"],
     },
-    cmdclass={"build_ext": cmake_build_ext} if _build_custom_ops() else {},
+    cmdclass={"build_ext": cmake_build_ext},
     package_data=package_data,
 )
