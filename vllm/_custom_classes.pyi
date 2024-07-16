@@ -24,58 +24,101 @@ class ScalarType:
 
     @classmethod
     def f(cls, exponent: int, mantissa: int) -> ScalarType:
+        """
+        Create a standard floating point type 
+        (i.e. follows IEEE 754 conventions).
+        """
         ...
         
     @classmethod
     def fn(cls, exponent: int, mantissa: int, finite_values_only: bool, 
            nan_repr: int) -> ScalarType:
+        """
+        Create a non-standard floating point type 
+        (i.e. does not follow IEEE 754 conventions).
+        """
         ...
 
     @property
     def mantissa(self) -> int:
+        """
+        Number of bits in the mantissa if this is a floating point type,
+        or the number bits representing an integer excluding the sign bit if 
+        this an integer type.
+        """
         ...
 
     @property
     def exponent(self) -> int:
+        """
+        Number of bits in the exponent if this is a floating point type
+        (zero if this an integer type)
+        """
         ...
 
     @property
     def bias(self) -> int:
+        """
+        bias used to encode the values in this scalar type 
+        (value = stored_value - bias, default 0) for example if we store the 
+        type as an unsigned integer with a bias of 128 then the value 0 will be 
+        stored as 128 and -1 will be stored as 127 and 1 will be stored as 129.
+        """
         ...
 
     @property
     def size_bits(self) -> int:
+        "Total size of the scalar type in bits."
         ...
         
     @property
     def nan_repr(self) -> NanRepr:
+        """
+        How NaNs are represent in this scalar type. 
+        (not applicable for integer types)
+        """
         ...
 
     def max(self) -> Union[int, float]:
+        """
+        Max representable value for this scalar type. 
+        (accounting for bias if there is one)
+        """
         ...
 
     def min(self) -> Union[int, float]:
+        """
+        Min representable value for this scalar type. 
+        (accounting for bias if there is one)
+        """
         ...
 
     def is_signed(self) -> bool:
+        "If the type is signed (i.e. has a sign bit)"
         ...
 
     def is_integer(self) -> bool:
+        "If the type is an integer type"
         ...
 
     def is_floating_point(self) -> bool:
+        "If the type is a floating point type"
         ...
         
     def is_ieee_754(self) -> bool:
+        "If the type is a floating point type that follows IEEE 754 conventions"
         ...
 
     def has_nans(self) -> bool:
+        "If the type is floating point and supports NaN(s)"
         ...
     
     def has_infs(self) -> bool:
+        "If the type is floating point and supports infinity"
         ...
 
-    def has_zero_points(self) -> bool:
+    def has_bias(self) -> bool:
+        "If the type has a non-zero bias"
         ...
 
     def __eq__(self, value: object) -> bool:
