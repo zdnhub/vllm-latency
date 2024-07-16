@@ -13,9 +13,9 @@ COPY requirements-common.txt /workspace/vllm/
 COPY requirements-openvino.txt /workspace/vllm/
 
 COPY vllm/ /workspace/vllm/vllm
-COPY csrc/core /app/vllm/vllm/csrc/core
-COPY cmake/utils.cmake /app/vllm/vllm/cmake/utils.cmake
-COPY CMakeLists.txt /app/vllm/vllm/CMakeLists.txt
+COPY csrc/core /workspace/vllm/csrc/core
+COPY cmake/utils.cmake /workspace/vllm/cmake/
+COPY CMakeLists.txt /workspace/vllm/
 COPY setup.py /workspace/vllm/
 
 # install build requirements
