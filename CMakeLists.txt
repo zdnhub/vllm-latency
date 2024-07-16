@@ -67,6 +67,39 @@ endif()
 find_package(Torch REQUIRED)
 
 #
+# Add the `default` target which detects which extensions should be
+# built based on platform/architecture.  This is the same logic that
+# setup.py uses to select which extensions should be built and should
+# be kept in sync.
+#
+# The `default` target makes direct use of cmake easier since knowledge
+# of which extensions are supported has been factored in, e.g.
+#
+# mkdir build && cd build
+# cmake -G Ninja -DVLLM_PYTHON_EXECUTABLE=`which python3` -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=../vllm ..
+# cmake --build . --target default
+#
+add_custom_target(default)
+message(STATUS "Enabling core extension.")
+
+# Define _core_C extension
+#  (built for every target platform)
+
+set(VLLM_EXT_SRC
+  "csrc/torch_bindings_core.cpp")
+
+define_gpu_extension_target(
+  _core_C
+  DESTINATION vllm
+  LANGUAGE CXX
+  SOURCES ${VLLM_EXT_SRC}
+  COMPILE_FLAGS ${CXX_COMPILE_FLAGS}
+  USE_SABI 3
+  WITH_SOABI)
+
+add_dependencies(default _core_C)
+
+#
 # Forward the non-CUDA device extensions to external CMake scripts.
 #
 if (NOT VLLM_TARGET_DEVICE STREQUAL "cuda" AND
@@ -132,25 +165,8 @@ if(NVCC_THREADS AND VLLM_GPU_LANG STREQUAL "CUDA")
 endif()
 
 #
-# Define extension targets
+# Define other extension targets
 #
-
-#
-# _core_C extension
-#  (built for every target platform)
-#
-
-set(VLLM_EXT_SRC
-  "csrc/torch_bindings_core.cpp")
-
-define_gpu_extension_target(
-  _core_C
-  DESTINATION vllm
-  LANGUAGE CXX
-  SOURCES ${VLLM_EXT_SRC}
-  COMPILE_FLAGS ${CXX_COMPILE_FLAGS}
-  USE_SABI 3
-  WITH_SOABI)
 
 #
 # _C extension
@@ -292,23 +308,6 @@ else()
   message(WARNING "Unable to create _punica_C target because none of the "
     "requested architectures (${VLLM_GPU_ARCHES}) are supported, i.e. >= 8.0")
 endif()
-
-#
-# Add the `default` target which detects which extensions should be
-# built based on platform/architecture.  This is the same logic that
-# setup.py uses to select which extensions should be built and should
-# be kept in sync.
-#
-# The `default` target makes direct use of cmake easier since knowledge
-# of which extensions are supported has been factored in, e.g.
-#
-# mkdir build && cd build
-# cmake -G Ninja -DVLLM_PYTHON_EXECUTABLE=`which python3` -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=../vllm ..
-# cmake --build . --target default
-#
-add_custom_target(default)
-message(STATUS "Enabling core extension.")
-add_dependencies(default _core_C)
 
 if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   message(STATUS "Enabling C extension.")
