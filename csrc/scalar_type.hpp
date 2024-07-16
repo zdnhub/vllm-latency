@@ -55,21 +55,24 @@ class ScalarType {
     TORCH_CHECK(nan_repr < NAN_REPR_ID_MAX, "Invalid NanRepr");
     TORCH_CHECK(mantissa > 0 && exponent > 0);
     TORCH_CHECK(nan_repr != NAN_IEEE_754,
-                "use `f` constructor for IEEE 754 compliant types");
+                "use `f` constructor for floting point types that follow IEEE "
+                "754 conventions");
     return ScalarType(true, exponent, mantissa, 0, finite_values_only,
                       nan_repr);
   }
 
-  // when representing an integer type, the exponent is 0 and the mantissa size
-  // represents the size of the integer (excluding the sign bit if there is one)
-  int64_t const exponent;
-  int64_t const mantissa;
-  int64_t const zero_point;
-  bool const _signed;
+  int64_t const exponent;    // size of the exponent field (0 for integer types)
+  int64_t const mantissa;    // size of the mantissa field (size of the integer
+                             // excluding the sign bit for integer types)
+  int64_t const zero_point;  // stored values equal value + bias,
+                             // used for quantized type
+  bool const _signed;  // flag if the type supports negative numbers (i.e. has a
+                       // sign bit)
 
-  // Floating point info
+  // Extra Floating point info
   bool const finite_values_only;  // i.e. no +/-inf if true
-  NanRepr const nan_repr;
+  NanRepr const nan_repr;         // how NaNs are represented
+                                  // (not applicable for integer types)
 
   int64_t size_bits() const { return mantissa + exponent + is_signed(); }
   bool is_signed() const { return _signed; }
@@ -158,6 +161,8 @@ class ScalarType {
   }
 
  public:
+  // Max representable value for this scalar type.
+  // (accounting for bias if there is one)
   std::variant<int64_t, double> max() const {
     return std::visit(
         [this](auto x) -> std::variant<int64_t, double> {
@@ -166,6 +171,8 @@ class ScalarType {
         _raw_max());
   }
 
+  // Min representable value for this scalar type.
+  // (accounting for bias if there is one)
   std::variant<int64_t, double> min() const {
     return std::visit(
         [this](auto x) -> std::variant<int64_t, double> {
