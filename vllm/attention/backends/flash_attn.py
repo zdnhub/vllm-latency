@@ -18,34 +18,30 @@ from vllm.utils import make_tensor_with_pad
 if TYPE_CHECKING:
     from vllm.worker.model_runner import ModelInputForGPUBuilder
 
-torch.library.define(
-    "vllm::flash_attn_varlen_func",
-    ("(Tensor q, "
-     "Tensor k, "
-     "Tensor v, "
-     "Tensor cu_seqlens_q, "
-     "Tensor cu_seqlens_k, "
-     "int max_seqlen_q, "
-     "int max_seqlen_k, "
-     "float softmax_scale, "
-     "bool causal, "
-     "(int, int) window_size, "
-     "float[]? alibi_slopes, "
-     "int[] out_shape) -> Tensor")
-)
+torch.library.define("vllm::flash_attn_varlen_func",
+                     ("(Tensor q, "
+                      "Tensor k, "
+                      "Tensor v, "
+                      "Tensor cu_seqlens_q, "
+                      "Tensor cu_seqlens_k, "
+                      "int max_seqlen_q, "
+                      "int max_seqlen_k, "
+                      "float softmax_scale, "
+                      "bool causal, "
+                      "(int, int) window_size, "
+                      "float[]? alibi_slopes, "
+                      "int[] out_shape) -> Tensor"))
 
-torch.library.define(
-    "vllm::flash_attn_with_kvcache",
-    ("(Tensor q, "
-     "Tensor k, "
-     "Tensor v, "
-     "Tensor block_table, "
-     "Tensor cache_seqlens, "
-     "float softmax_scale, "
-     "bool causal, "
-     "float[]? alibi_slopes, "
-     "int[] out_shape) -> Tensor")
-)
+torch.library.define("vllm::flash_attn_with_kvcache",
+                     ("(Tensor q, "
+                      "Tensor k, "
+                      "Tensor v, "
+                      "Tensor block_table, "
+                      "Tensor cache_seqlens, "
+                      "float softmax_scale, "
+                      "bool causal, "
+                      "float[]? alibi_slopes, "
+                      "int[] out_shape) -> Tensor"))
 
 
 @torch.library.impl("vllm::flash_attn_varlen_func", "cuda")
@@ -670,8 +666,7 @@ class FlashAttentionImpl(AttentionImpl):
                         alibi_slopes=self.alibi_slopes,
                         block_table=prefill_meta.block_tables,
                         out_shape=output[:num_prefill_tokens].size(),
-                    )
-                )
+                    ))
 
         if decode_meta := attn_metadata.decode_metadata:
             # Decoding run.
