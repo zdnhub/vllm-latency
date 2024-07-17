@@ -2,6 +2,7 @@
 -r requirements-common.txt
 
 # Dependencies for NVIDIA GPUs
+cupy-cuda12x
 ray >= 2.9
 nvidia-ml-py # for pynvml package
 torch == 2.3.1

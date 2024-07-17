@@ -106,12 +106,17 @@ class RayGPUExecutor(DistributedGPUExecutor):
         # The remaining workers are the actual ray actors.
         self.workers: List[RayWorkerWrapper] = []
 
+        # Used in ray compiled DAG: indexed first by PP rank, and then TP rank.
+        self.pp_tp_workers: List[List[RayWorkerWrapper]] = []
+
         if self.parallel_config.ray_workers_use_nsight:
             ray_remote_kwargs = self._configure_ray_workers_use_nsight(
                 ray_remote_kwargs)
 
+        logger.info("use_ray_spmd_worker: %s", self.use_ray_spmd_worker)
         # Create the workers.
         driver_ip = get_ip()
+        logger.info("driver_ip: %s", driver_ip)
         worker_wrapper_kwargs = self._get_worker_wrapper_args()
         for bundle_id, bundle in enumerate(placement_group.bundle_specs):
             if not bundle.get("GPU", 0):
@@ -143,11 +148,27 @@ class RayGPUExecutor(DistributedGPUExecutor):
                     # Else, added to the list of workers.
                     self.workers.append(worker)
 
+        logger.info("workers: %s", self.workers)
+        logger.info("driver_dummy_worker: %s", self.driver_dummy_worker)
         if not self.use_ray_spmd_worker and self.driver_dummy_worker is None:
             raise ValueError(
                 "Ray does not allocate any GPUs on the driver node. Consider "
                 "adjusting the Ray placement group or running the driver on a "
                 "GPU node.")
+
+        worker_ips = [
+            ray.get(worker.get_node_ip.remote())  # type: ignore[attr-defined]
+            for worker in self.workers
+        ]
+        ip_counts: Dict[str, int] = {}
+        for ip in worker_ips:
+            ip_counts[ip] = ip_counts.get(ip, 0) + 1
+
+        def sort_by_driver_then_worker_ip(worker):
+            ip = ray.get(worker.get_node_ip.remote())
+            return (ip != driver_ip, ip_counts[ip], ip)
+
+        self.workers = sorted(self.workers, key=sort_by_driver_then_worker_ip)
 
         # Get the set of GPU IDs used on each node.
         worker_node_and_gpu_ids = self._run_workers("get_node_and_gpu_ids",
@@ -176,9 +197,8 @@ class RayGPUExecutor(DistributedGPUExecutor):
         node_workers = defaultdict(list)  # node id -> list of worker ranks
         node_gpus = defaultdict(list)  # node id -> list of gpu ids
 
-        for worker_rank, (node_id, gpu_ids) in zip(worker_ranks,
-                                                   worker_node_and_gpu_ids):
-            node_workers[node_id].append(worker_rank)
+        for i, (node_id, gpu_ids) in enumerate(worker_node_and_gpu_ids):
+            node_workers[node_id].append(i)
             # `gpu_ids` can be a list of strings or integers.
             # convert them to integers for consistency.
             # NOTE: gpu_ids can be larger than 9 (e.g. 16 GPUs),
@@ -203,16 +223,6 @@ class RayGPUExecutor(DistributedGPUExecutor):
         self._run_workers("update_environment_variables",
                           all_args=all_args_to_update_environment_variables)
 
-        if len(node_gpus) == 1:
-            # in single node case, we don't need to get the IP address.
-            # the loopback address is sufficient
-            # NOTE: a node may have several IP addresses, one for each
-            # network interface. `get_ip()` might return any of them,
-            # while they might not work for communication inside the node
-            # if the network setup is complicated. Using the loopback address
-            # solves this issue, as it always works for communication inside
-            # the node.
-            driver_ip = "127.0.0.1"
         distributed_init_method = get_distributed_init_method(
             driver_ip, get_open_port())
 
@@ -224,8 +234,7 @@ class RayGPUExecutor(DistributedGPUExecutor):
                 local_rank=node_workers[node_id].index(rank),
                 rank=rank,
                 distributed_init_method=distributed_init_method,
-            ) for rank, (node_id,
-                         _) in zip(worker_ranks, worker_node_and_gpu_ids)
+            ) for rank, (node_id, _) in enumerate(worker_node_and_gpu_ids)
         ]
         self._run_workers("init_worker", all_kwargs=init_worker_all_kwargs)
 
@@ -233,6 +242,19 @@ class RayGPUExecutor(DistributedGPUExecutor):
         self._run_workers("load_model",
                           max_concurrent_workers=self.parallel_config.
                           max_parallel_loading_workers)
+
+        if self.use_ray_spmd_worker:
+            for pp_rank in range(self.parallel_config.pipeline_parallel_size):
+                self.pp_tp_workers.append([])
+                for tp_rank in range(
+                        self.parallel_config.tensor_parallel_size):
+                    # PP=2, TP=4
+                    # pp_tp_workers = [[0, 1, 2, 3], [4, 5, 6, 7]]
+                    rank = (pp_rank * self.parallel_config.tensor_parallel_size
+                            ) + tp_rank
+                    assert len(self.pp_tp_workers[pp_rank]) == tp_rank
+                    assert pp_rank < len(self.pp_tp_workers)
+                    self.pp_tp_workers[pp_rank].append(self.workers[rank])
 
         # This is the list of workers that are rank 0 of each TP group EXCEPT
         # global rank 0. These are the workers that will broadcast to the
@@ -379,16 +401,50 @@ class RayGPUExecutor(DistributedGPUExecutor):
             raise ValueError(f"Ray version {required_version} or greater is "
                              f"required, but found {current_version}")
 
-        from ray.dag import InputNode, MultiOutputNode
         assert self.parallel_config.use_ray
+        from ray.dag import InputNode, MultiOutputNode
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-        # Right now, compiled DAG requires at least 1 arg. We send
-        # a dummy value for now. It will be fixed soon.
+        logger.info("VLLM_USE_RAY_COMPILED_DAG_NCCL = %s",
+                    envs.VLLM_USE_RAY_COMPILED_DAG_NCCL)
         with InputNode() as input_data:
-            forward_dag = MultiOutputNode([
-                worker.execute_model_spmd.bind(  # type: ignore[attr-defined]
-                    input_data) for worker in self.workers
-            ])
+            # Example DAG: PP=2, TP=4
+            # (ExecuteModelReq, None) -> 0 -> (ExecuteModelReq, IntermediateOutput) -> 4 -> SamplerOutput   # noqa: E501
+            #                         -> 1 -> (ExecuteModelReq, IntermediateOutput) -> 5 -> SamplerOutput   # noqa: E501
+            #                         -> 2 -> (ExecuteModelReq, IntermediateOutput) -> 6 -> SamplerOutput   # noqa: E501
+            #                         -> 3 -> (ExecuteModelReq, IntermediateOutput) -> 7 -> SamplerOutput   # noqa: E501
+            # All workers in the first TP group will take in the
+
+            # ExecuteModelRequest as input.
+            outputs = [input_data for _ in self.pp_tp_workers[0]]
+            for pp_rank, tp_group in enumerate(self.pp_tp_workers):
+                # Each PP worker takes in the output of the previous PP worker.
+                outputs = [
+                    worker.execute_model_spmd.
+                    bind(  # type: ignore[attr-defined]
+                        outputs[i]) for i, worker in enumerate(tp_group)
+                ]
+
+                # Specify how intermediate tensors should be passed between
+                # workers.
+                if pp_rank < len(self.pp_tp_workers) - 1:
+                    if envs.VLLM_USE_RAY_COMPILED_DAG_NCCL:
+                        # Transfer the tensors through NCCL.
+                        outputs = [
+                            output.with_type_hint(
+                                TorchTensorType(transport="nccl"))
+                            for output in outputs
+                        ]
+                    else:
+                        # Just transfer the tensors through Ray's shared memory
+                        # store.
+                        outputs = [
+                            output.with_type_hint(TorchTensorType())
+                            for output in outputs
+                        ]
+
+            forward_dag = MultiOutputNode(outputs)
+
         return forward_dag.experimental_compile(enable_asyncio=enable_asyncio)
 
     def __del__(self):
