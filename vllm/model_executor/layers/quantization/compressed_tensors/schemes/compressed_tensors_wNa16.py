@@ -4,7 +4,6 @@ import torch
 from torch.nn import Parameter
 
 from vllm import _custom_ops as ops
-from vllm import scalar_type
 from vllm.model_executor.layers.quantization.compressed_tensors.schemes import (
     CompressedTensorsScheme)
 from vllm.model_executor.layers.quantization.utils.marlin_utils import (
@@ -12,6 +11,7 @@ from vllm.model_executor.layers.quantization.utils.marlin_utils import (
     marlin_permute_scales, replace_tensor, verify_marlin_supported,
     verify_marlin_supports_shape)
 from vllm.model_executor.utils import set_weight_attrs
+from vllm.scalar_type import scalar_types
 
 __all__ = ["CompressedTensorsWNA16"]
 WNA16_SUPPORTED_BITS = [4, 8]
@@ -24,8 +24,8 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
                  num_bits: int,
                  group_size: Optional[int] = None):
         self.quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_types.u4b8,
+            8: scalar_types.u8b128,
         }[num_bits]
 
         self.pack_factor = 32 // self.quant_type.size_bits

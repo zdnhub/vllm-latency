@@ -4,7 +4,6 @@ import torch
 from torch.nn.parameter import Parameter
 
 from vllm import _custom_ops as ops
-from vllm import scalar_type
 from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import (LinearBase, LinearMethodBase,
                                                set_weight_attrs)
@@ -16,6 +15,7 @@ from vllm.model_executor.layers.quantization.utils.marlin_utils import (
     marlin_repeat_scales_on_all_ranks, marlin_sort_g_idx, replace_tensor,
     verify_marlin_supported, verify_marlin_supports_shape)
 from vllm.model_executor.layers.vocab_parallel_embedding import ParallelLMHead
+from vllm.scalar_type import scalar_types
 
 logger = init_logger(__name__)
 
@@ -31,8 +31,8 @@ class GPTQMarlinConfig(QuantizationConfig):
             desc_act = False
 
         self.quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_types.u4b8,
+            8: scalar_types.u8b128,
         }[weight_bits]
 
         self.pack_factor = 32 // self.quant_type.size_bits  # packed into int32
@@ -119,8 +119,8 @@ class GPTQMarlinConfig(QuantizationConfig):
         desc_act = quant_config.get("desc_act", None)
 
         quant_type = {
-            4: scalar_type.u4b8,
-            8: scalar_type.u8b128,
+            4: scalar_types.u4b8,
+            8: scalar_types.u8b128,
         }.get(num_bits)
 
         # If we cannot find the info needed in the config, cannot convert.
