@@ -1,12 +1,12 @@
 from enum import Enum
 
-from ._custom_classes import ScalarType
+from ._core_ext import ScalarType
 
 
 # Mirrors enum in `core/scalar_type.hpp`
 class NanRepr(Enum):
-    IEEE_754 = 0  # nans are: Exp all 1s, mantissa not all 0s
-    NONE = 1  # nans are not supported
+    NONE = 0  # nans are not supported
+    IEEE_754 = 1  # nans are: Exp all 1s, mantissa not all 0s
     EXTD_RANGE_MAX_MIN = 2  # nans are: Exp all 1s, mantissa all 1s
 
 

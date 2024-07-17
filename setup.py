@@ -274,6 +274,10 @@ def _build_custom_ops() -> bool:
     return _is_cuda() or _is_hip() or _is_cpu()
 
 
+def _build_core_ext() -> bool:
+    return not _is_neuron()
+
+
 def _install_punica() -> bool:
     return envs.VLLM_INSTALL_PUNICA_KERNELS
 
@@ -438,7 +442,10 @@ def get_requirements() -> List[str]:
     return requirements
 
 
-ext_modules = [CMakeExtension(name="vllm._core_C")]
+ext_modules = []
+
+if _build_core_ext():
+    ext_modules.append(CMakeExtension(name="vllm._core_C"))
 
 if _is_cuda() or _is_hip():
     ext_modules.append(CMakeExtension(name="vllm._moe_C"))
@@ -486,7 +493,7 @@ setup(
     extras_require={
         "tensorizer": ["tensorizer>=2.9.0"],
     },
-    cmdclass={"build_ext": cmake_build_ext},
+    cmdclass={"build_ext": cmake_build_ext} if len(ext_modules) > 0 else {},
     package_data=package_data,
     entry_points={
         "console_scripts": [

@@ -21,9 +21,6 @@ RUN python3 -m pip install transformers-neuronx --extra-index-url=https://pip.re
 RUN python3 -m pip install --pre neuronx-cc==2.12.* --extra-index-url=https://pip.repos.neuron.amazonaws.com -U
 
 COPY ./vllm /app/vllm/vllm
-COPY ./csrc/core /app/vllm/vllm/csrc/core
-COPY ./cmake/utils.cmake /app/vllm/cmake/utils.cmake
-COPY ./CMakeLists.txt /app/vllm/CMakeLists.txt
 COPY ./setup.py /app/vllm/setup.py
 COPY ./requirements-common.txt /app/vllm/requirements-common.txt
 COPY ./requirements-neuron.txt /app/vllm/requirements-neuron.txt

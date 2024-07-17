@@ -18,8 +18,8 @@ namespace vllm {
 class ScalarType {
  public:
   enum NanRepr : int64_t {
-    NAN_IEEE_754 = 0,            // nans are: exp all 1s, mantissa not all 0s
-    NAN_NONE = 1,                // nans are not supported
+    NAN_NONE = 0,                // nans are not supported
+    NAN_IEEE_754 = 1,            // nans are: exp all 1s, mantissa not all 0s
     NAN_EXTD_RANGE_MAX_MIN = 2,  // nans are: exp all 1s, mantissa all 1s
 
     NAN_REPR_ID_MAX
