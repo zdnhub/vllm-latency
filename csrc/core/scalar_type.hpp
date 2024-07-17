@@ -55,7 +55,7 @@ class ScalarType {
     TORCH_CHECK(nan_repr < NAN_REPR_ID_MAX, "Invalid NanRepr");
     TORCH_CHECK(mantissa > 0 && exponent > 0);
     TORCH_CHECK(nan_repr != NAN_IEEE_754,
-                "use `f` constructor for floting point types that follow IEEE "
+                "use `f` constructor for floating point types that follow IEEE "
                 "754 conventions");
     return ScalarType(true, exponent, mantissa, 0, finite_values_only,
                       nan_repr);
