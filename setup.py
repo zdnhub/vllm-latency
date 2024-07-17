@@ -275,7 +275,7 @@ def _build_custom_ops() -> bool:
 
 
 def _build_core_ext() -> bool:
-    return not _is_neuron()
+    return not _is_neuron() and not _is_tpu()
 
 
 def _install_punica() -> bool:

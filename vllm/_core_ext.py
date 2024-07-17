@@ -19,8 +19,8 @@ if core_C_available:
 
 elif not TYPE_CHECKING:
     # On platforms were we cannot use/build the C++ core extension (i.e. namely
-    # neuron), we define the mock ScalarType class here that partially mimics
-    # the C++ ScalarType class.
+    # neuron and tpu), we define the mock ScalarType class here that partially
+    # mimics the C++ ScalarType class.
 
     from dataclasses import dataclass
 
