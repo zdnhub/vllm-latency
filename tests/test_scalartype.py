@@ -9,6 +9,7 @@ from vllm.scalar_type import scalar_types
     (0, 15, scalar_types.u4),
     (-8, 7, scalar_types.u4b8),
     (-128, 127, scalar_types.u8b128),
+    (-28., 28., scalar_types.fE3M2f),
     (torch.int8, scalar_types.s8),
     (torch.uint8, scalar_types.u8),
     (torch.float8_e5m2, scalar_types.fE5M2),

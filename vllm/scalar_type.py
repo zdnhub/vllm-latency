@@ -10,6 +10,20 @@ class NanRepr(Enum):
     EXTD_RANGE_MAX_MIN = 2  # nans are: Exp all 1s, mantissa all 1s
 
 
+# naming generally follows: https://github.com/jax-ml/ml_dtypes
+# for floating point types (leading f):
+#  - trailing f: means finite values only (no infinities)
+#  - trailing n: means nans are supported
+#  - no-trailing letters: means it follows IEEE 754 conventions
+#  - E_: exponent size
+#  - M_: mantissa size
+# for integer types:
+#  - leading s: means signed
+#  - leading u: means unsigned
+#  - number following s/u: number of bits
+#  - bX: indicates a non-zero bias of X
+
+
 class scalar_types:
     s4 = ScalarType.s(4, None)
     u4 = ScalarType.u(4, None)
@@ -19,6 +33,9 @@ class scalar_types:
     fE5M2 = ScalarType.f(5, 2)
     fE8M7 = ScalarType.f(8, 7)
     fE5M10 = ScalarType.f(5, 10)
+
+    # fp6, https://github.com/usyd-fsalab/fp6_llm/tree/main
+    fE3M2f = ScalarType.fn(3, 2, True, NanRepr.NONE.value)
 
     # "gptq" types
     u4b8 = ScalarType.u(4, 8)

@@ -177,12 +177,24 @@ class ScalarType {
   }
 
   std::string str() const {
+    /*
+     * generally follows: https://github.com/jax-ml/ml_dtypes
+     * for floating point types (leading f):
+     *  - trailing f: means finite values only (no infinities)
+     *  - trailing n: means nans are supported
+     *  - no-trailing letters: means it follows IEEE 754 conventions
+     *  - E_: exponent size
+     *  - M_: mantissa size
+     * for integer types:
+     *  - leading s: means signed
+     *  - leading u: means unsigned
+     *  - number following s/u: number of bits
+     *  - bX: indicates a non-zero bias of X
+     */
     if (is_floating_point()) {
       auto ret =
           "fE" + std::to_string(exponent) + "M" + std::to_string(mantissa);
       if (!is_ieee_754()) {
-        // follow convention of:
-        //   https://github.com/jax-ml/ml_dtypes
         if (finite_values_only) {
           ret += "f";
         }
@@ -323,11 +335,26 @@ class ScalarTypeTorch : public torch::CustomClassHolder, public ScalarType {
 
 using ScalarTypeTorchPtr = c10::intrusive_ptr<ScalarTypeTorch>;
 
-// Common types
+/*
+ * generally follows: https://github.com/jax-ml/ml_dtypes
+ * for floating point types (leading F):
+ *  - trailing f: means finite values only (no infinities)
+ *  - trailing n: means nans are supported
+ *  - no-trailing letters: means it follows IEEE 754 conventions
+ *  - E_: exponent size
+ *  - M_: mantissa size
+ * for integer types:
+ *  - leading S: means signed
+ *  - leading U: means unsigned
+ *  - number following S/U: number of bits
+ *  - BX: indicates a non-zero bias of X
+ */
 static inline constexpr auto kS4 = ScalarType::s(4);
 static inline constexpr auto kU4 = ScalarType::u(4);
 static inline constexpr auto kS8 = ScalarType::s(8);  // int8
 static inline constexpr auto kU8 = ScalarType::u(8);  // uint8
+static inline constexpr auto kFE3M2fn =
+    ScalarType::fn(3, 2, true, ScalarType::NAN_NONE);  // FP6
 static inline constexpr auto kFE3M4fn = ScalarType::fn(
     3, 4, true, ScalarType::NAN_EXTD_RANGE_MAX_MIN);          // FP8_E3M4fn
 static inline constexpr auto kFE5M2 = ScalarType::f(5, 2);    // FP8_E5M2
