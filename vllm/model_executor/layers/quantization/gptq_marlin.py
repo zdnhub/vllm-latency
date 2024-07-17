@@ -320,7 +320,7 @@ class GPTQMarlinLinearMethod(LinearMethodBase):
             g_idx=layer.g_idx,
             g_idx_sort_indices=layer.g_idx_sort_indices,
             workspace=layer.workspace,
-            b_q_type=self.quant_config.quant_type,
+            wtype=self.quant_config.quant_type,
             output_size_per_partition=layer.output_size_per_partition,
             input_size_per_partition=layer.input_size_per_partition,
             is_k_full=layer.is_k_full,
