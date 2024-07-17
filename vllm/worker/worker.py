@@ -33,24 +33,23 @@ class Worker(LocalOrDistributedWorkerBase):
     distributed inference, each worker is assigned a partition of the model.
     """
 
-    def __init__(
-        self,
-        model_config: ModelConfig,
-        parallel_config: ParallelConfig,
-        scheduler_config: SchedulerConfig,
-        device_config: DeviceConfig,
-        cache_config: CacheConfig,
-        load_config: LoadConfig,
-        local_rank: int,
-        rank: int,
-        distributed_init_method: str,
-        lora_config: Optional[LoRAConfig] = None,
-        multimodal_config: Optional[MultiModalConfig] = None,
-        speculative_config: Optional[SpeculativeConfig] = None,
-        prompt_adapter_config: Optional[PromptAdapterConfig] = None,
-        is_driver_worker: bool = False,
-        model_runner_cls: Optional[Type[GPUModelRunnerBase]] = None,
-    ) -> None:
+    def __init__(self,
+                 model_config: ModelConfig,
+                 parallel_config: ParallelConfig,
+                 scheduler_config: SchedulerConfig,
+                 device_config: DeviceConfig,
+                 cache_config: CacheConfig,
+                 load_config: LoadConfig,
+                 local_rank: int,
+                 rank: int,
+                 distributed_init_method: str,
+                 lora_config: Optional[LoRAConfig] = None,
+                 multimodal_config: Optional[MultiModalConfig] = None,
+                 speculative_config: Optional[SpeculativeConfig] = None,
+                 prompt_adapter_config: Optional[PromptAdapterConfig] = None,
+                 is_driver_worker: bool = False,
+                 model_runner_cls: Optional[Type[GPUModelRunnerBase]] = None,
+                 enable_mqa: bool = False) -> None:
         self.model_config = model_config
         self.parallel_config = parallel_config
         self.parallel_config.rank = rank
@@ -81,6 +80,9 @@ class Worker(LocalOrDistributedWorkerBase):
             or (speculative_config.draft_model_config.hf_config.model_type
                 not in ["medusa", "mlp_speculator"]) \
                     else {"return_hidden_states": True}
+
+        if enable_mqa:
+            speculative_args["enable_mqa"] = True
 
         ModelRunnerClass: Type[GPUModelRunnerBase] = ModelRunner
         if model_runner_cls is not None:
