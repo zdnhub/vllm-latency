@@ -3,8 +3,8 @@
 #include "scalar_type.hpp"
 #include "registration.h"
 
-// Note the CORE exstension will be built for all hardware targets so additions
-// must account for this.
+// Note the CORE exstension will be built for (almost) all hardware targets so
+// new additions must account for this. (currently not built for TPU and Neuron)
 
 TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, lib) {
   // ScalarType, a custom class for representing data types that supports

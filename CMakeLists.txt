@@ -83,7 +83,7 @@ add_custom_target(default)
 message(STATUS "Enabling core extension.")
 
 # Define _core_C extension
-#  (built for every target platform)
+#  built for (almost) every target platform, (excludes TPU and Neuron)
 
 set(VLLM_EXT_SRC
   "csrc/core/torch_bindings.cpp")
