@@ -14,7 +14,11 @@ from vllm.model_executor.utils import set_weight_attrs
 from vllm.scalar_type import scalar_types
 
 __all__ = ["CompressedTensorsWNA16"]
-WNA16_SUPPORTED_BITS = [4, 8]
+WNA16_SUPPORTED_TYPES_MAP = {
+    4: scalar_types.u4b8,
+    8: scalar_types.u8b128,
+}
+WNA16_SUPPORTED_BITS = list(WNA16_SUPPORTED_TYPES_MAP.keys())
 
 
 class CompressedTensorsWNA16(CompressedTensorsScheme):
@@ -23,12 +27,8 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
                  strategy: str,
                  num_bits: int,
                  group_size: Optional[int] = None):
-        self.quant_type = {
-            4: scalar_types.u4b8,
-            8: scalar_types.u8b128,
-        }[num_bits]
 
-        self.pack_factor = 32 // self.quant_type.size_bits
+        self.pack_factor = 32 // num_bits
         self.strategy = strategy
 
         self.group_size: int
@@ -42,10 +42,16 @@ class CompressedTensorsWNA16(CompressedTensorsScheme):
         else:
             self.group_size = group_size
 
+        if num_bits not in WNA16_SUPPORTED_TYPES_MAP:
+            raise ValueError(
+                f"Unsupported num_bits = {num_bits}. "
+                f"Supported num_bits = {WNA16_SUPPORTED_TYPES_MAP.keys()}")
+
+        self.quant_type = WNA16_SUPPORTED_TYPES_MAP[num_bits]
+
         # Verify supported on platform.
         verify_marlin_supported(quant_type=self.quant_type,
-                                group_size=self.group_size,
-                                is_sym=True)
+                                group_size=self.group_size)
 
     def create_weights(self, layer: torch.nn.Module, input_size: int,
                        output_partition_sizes: List[int],

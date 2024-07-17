@@ -13,12 +13,11 @@ GPTQ_MARLIN_MAX_PARALLEL = 16
 
 GPTQ_MARLIN_SUPPORTED_QUANT_TYPES = [scalar_types.u4b8, scalar_types.u8b128]
 GPTQ_MARLIN_SUPPORTED_GROUP_SIZES = [-1, 32, 64, 128]
-GPTQ_MARLIN_SUPPORTED_SYM = [True]
 GTPQ_MARLIN_UNSUPPORTED_GROUP_SIZE_ACT_ORDER = [-1]
 
 
 def check_marlin_supported(quant_type: ScalarType, group_size: int,
-                           is_sym: bool, min_capability: int) -> bool:
+                           min_capability: int) -> bool:
 
     # If the capability of the device is too low, cannot convert.
     major, minor = current_platform.get_device_capability()
@@ -28,12 +27,11 @@ def check_marlin_supported(quant_type: ScalarType, group_size: int,
 
     return (device_capability >= min_capability
             and quant_type in GPTQ_MARLIN_SUPPORTED_QUANT_TYPES
-            and group_size in GPTQ_MARLIN_SUPPORTED_GROUP_SIZES
-            and is_sym in GPTQ_MARLIN_SUPPORTED_SYM)
+            and group_size in GPTQ_MARLIN_SUPPORTED_GROUP_SIZES)
 
 
-def verify_marlin_supported(quant_type: ScalarType, group_size: Optional[int],
-                            is_sym: bool) -> None:
+def verify_marlin_supported(quant_type: ScalarType,
+                            group_size: Optional[int]) -> None:
 
     if quant_type not in GPTQ_MARLIN_SUPPORTED_QUANT_TYPES:
         raise ValueError(
@@ -46,10 +44,6 @@ def verify_marlin_supported(quant_type: ScalarType, group_size: Optional[int],
             f"Marlin does not support group_size = {group_size}. "
             f"Only group_sizes = {GPTQ_MARLIN_SUPPORTED_GROUP_SIZES} "
             "are supported.")
-    if is_sym not in GPTQ_MARLIN_SUPPORTED_SYM:
-        raise ValueError(
-            f"Marlin does not support is_sym = is_sym. "
-            f"Only sym = {GPTQ_MARLIN_SUPPORTED_SYM} are supported.")
 
 
 def verify_marlin_supports_shape(output_size_per_partition: int,
