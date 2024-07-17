@@ -1,7 +1,6 @@
 #pragma once
 
 #include <torch/custom_class.h>
-#include <iostream>
 
 namespace vllm {
 

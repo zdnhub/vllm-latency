@@ -1,4 +1,4 @@
-import importlib
+import importlib.util
 from typing import TYPE_CHECKING
 
 import torch
@@ -6,7 +6,7 @@ import torch
 from vllm.logger import init_logger
 
 logger = init_logger(__name__)
-core_C_available = importlib.find_loader('vllm._core_C') is not None
+core_C_available = importlib.util.find_spec('._core_C', 'vllm') is not None
 
 if core_C_available:
     try:
