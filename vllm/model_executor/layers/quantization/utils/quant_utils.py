@@ -40,7 +40,8 @@ def permute_rows(q_w: torch.Tensor, w_ref: torch.Tensor, group_size: int):
 
 
 def quantize_weights(w: torch.Tensor, quant_type: ScalarType, group_size: int):
-    assert quant_type.is_integer()
+    assert quant_type.is_integer(), \
+        "Floating point quantization may work but has not been tested"
 
     orig_device = w.device
     orig_type = w.dtype
