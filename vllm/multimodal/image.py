@@ -128,7 +128,8 @@ class ImagePlugin(MultiModalPlugin):
 
             return MultiModalInputs(batch_data)
         elif isinstance(data, torch.Tensor):
-            raise NotImplementedError("Embeddings input is not supported yet")
+            return MultiModalInputs({"pixel_values":
+                                     data})  # TODO: double check this
 
         raise TypeError(f"Invalid image type: {type(data)}")
 
