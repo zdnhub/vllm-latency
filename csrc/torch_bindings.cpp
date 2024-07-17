@@ -2,7 +2,6 @@
 #include "cuda_utils.h"
 #include "ops.h"
 #include "registration.h"
-#include "core/scalar_type.hpp"
 
 #include <torch/library.h>
 
