@@ -1,7 +1,5 @@
 from typing import Optional, Union
 
-from .scalar_type import NanRepr
-
 class ScalarType:
     """
     ScalarType can represent a wide range of floating point and integer types,
@@ -75,9 +73,9 @@ class ScalarType:
         ...
 
     @property
-    def nan_repr(self) -> NanRepr:
+    def nan_repr(self) -> int:
         """
-        How NaNs are represent in this scalar type. 
+        How NaNs are represent in this scalar type, returns NanRepr value. 
         (not applicable for integer types)
         """
         ...
