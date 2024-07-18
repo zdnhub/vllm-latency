@@ -122,17 +122,20 @@ class GPTQMarlinConfig(QuantizationConfig):
         sym = quant_config.get("sym", None)
         desc_act = quant_config.get("desc_act", None)
 
-        quant_type = {
-            (4, True): scalar_types.u4b8,
-            (8, True): scalar_types.u8b128,
-        }.get((num_bits, sym))
-
         # If we cannot find the info needed in the config, cannot convert.
         if (num_bits is None or group_size is None or sym is None
                 or desc_act is None):
             return False
 
-        return check_marlin_supported(quant_type=quant_type,
+        TYPE_MAP = {
+            (4, True): scalar_types.u4b8,
+            (8, True): scalar_types.u8b128,
+        }
+
+        if (num_bits, sym) not in TYPE_MAP:
+            return False
+
+        return check_marlin_supported(quant_type=TYPE_MAP[(num_bits, sym)],
                                       group_size=group_size,
                                       min_capability=cls.get_min_capability())
 
