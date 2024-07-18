@@ -26,7 +26,7 @@ def bgmv(
     y: torch.Tensor,
     x: torch.Tensor,
     w_t_all: torch.Tensor,
-    indicies: torch.LongTensor,
+    indices: torch.LongTensor,
     layer_idx: int,
     scale: float,
 ):
@@ -43,17 +43,17 @@ def bgmv(
       x: Shape: `[B, H1]`. Input vectors.
       w_t_all: Shape: `[None, L, H2, H1]`. All of the transposed weight
         matrices.
-      indicies: Shape: `[B]`. Indices of the weight matrices.
+      indices: Shape: `[B]`. Indices of the weight matrices.
       layer_idx: Layer index of the weight matrices.
       scale: Scaling factor.
     """
     _check_punica_support()
 
-    ops.dispatch_bgmv(y, x, w_t_all, indicies, layer_idx, scale)
+    ops.dispatch_bgmv(y, x, w_t_all, indices, layer_idx, scale)
 
 
 def dispatch_bgmv_low_level(y: torch.Tensor, x: torch.Tensor,
-                            w_t_all: torch.Tensor, indicies: torch.LongTensor,
+                            w_t_all: torch.Tensor, indices: torch.LongTensor,
                             layer_idx: int, scale: float, y_offset: int,
                             y_slice_size: int):
     """
@@ -72,7 +72,7 @@ def dispatch_bgmv_low_level(y: torch.Tensor, x: torch.Tensor,
       x: Shape: `[B, H1]`. Input vectors.
       w_t_all: Shape: `[None, L, y_slice_size, H1]`. Column partition of
         all of the transposed LoRA matrices.
-      indicies: Shape: `[B]`. Indices of the LoRA weights.
+      indices: Shape: `[B]`. Indices of the LoRA weights.
       layer_idx: Layer index of LoRA weights.
       scale: Scaling factor.
       y_offset: Offset to apply to the starting column of y.
@@ -84,7 +84,7 @@ def dispatch_bgmv_low_level(y: torch.Tensor, x: torch.Tensor,
         y,
         x,
         w_t_all,
-        indicies,
+        indices,
         layer_idx,
         scale,
         x.size(1),
@@ -97,7 +97,7 @@ def add_lora(y: torch.Tensor,
              x: torch.Tensor,
              wa_t_all: torch.Tensor,
              wb_t_all: torch.Tensor,
-             indicies: torch.LongTensor,
+             indices: torch.LongTensor,
              layer_idx: int,
              scale: float,
              *,
@@ -118,7 +118,7 @@ def add_lora(y: torch.Tensor,
         LoRA A matrices.
       wb_t_all: Shape: `[None, L, H2, R]`. All of the transposed
         LoRA B matrices.
-      indicies: Shape: `[B]`. Indices of the LoRA weights.
+      indices: Shape: `[B]`. Indices of the LoRA weights.
       layer_idx: Layer index of LoRA weights.
       scale: Scaling factor.
       buffer: Optional. Shape: `[B, R]`. Temporary buffer.
@@ -133,15 +133,15 @@ def add_lora(y: torch.Tensor,
         buffer = torch.zeros((x.size(0), r),
                              dtype=torch.float32,
                              device=x.device)
-    ops.dispatch_bgmv(buffer, x, wa_t_all, indicies, layer_idx, 1.0)
-    ops.dispatch_bgmv(y, buffer, wb_t_all, indicies, layer_idx, scale)
+    ops.dispatch_bgmv(buffer, x, wa_t_all, indices, layer_idx, 1.0)
+    ops.dispatch_bgmv(y, buffer, wb_t_all, indices, layer_idx, scale)
 
 
 def add_lora_slice(y: torch.Tensor,
                    x: torch.Tensor,
                    wa_t_all: torch.Tensor,
                    wb_t_all: torch.Tensor,
-                   indicies: torch.LongTensor,
+                   indices: torch.LongTensor,
                    layer_idx: int,
                    scale: float,
                    y_offset: int,
@@ -167,7 +167,7 @@ def add_lora_slice(y: torch.Tensor,
         LoRA A matrices.
       wb_t_all: Shape: `[None, L, H2, R]`. All of the transposed
         LoRA B matrices.
-      indicies: Shape: `[B]`. Indices of the LoRA weights.
+      indices: Shape: `[B]`. Indices of the LoRA weights.
       layer_idx: Layer index of LoRA weights.
       scale: Scaling factor.
       y_offset: Offset to apply to the starting column of y.
@@ -187,7 +187,7 @@ def add_lora_slice(y: torch.Tensor,
         buffer,
         x,
         wa_t_all,
-        indicies,
+        indices,
         layer_idx,
         1.0,
         x.size(1),
@@ -198,7 +198,7 @@ def add_lora_slice(y: torch.Tensor,
         y,
         buffer,
         wb_t_all,
-        indicies,
+        indices,
         layer_idx,
         scale,
         buffer.size(1),

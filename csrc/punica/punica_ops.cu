@@ -88,16 +88,16 @@ inline bool launch_bgmv_kernel(out_T *Y, const in_T *X, const W_T *W,
 }
 
 void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
-                   torch::Tensor indicies, int64_t layer_idx, double scale) {
+                   torch::Tensor indices, int64_t layer_idx, double scale) {
   CHECK_INPUT(y);
   CHECK_INPUT(x);
   CHECK_INPUT(w);
-  CHECK_INPUT(indicies);
+  CHECK_INPUT(indices);
 
   CHECK_DIM(2, y);
   CHECK_DIM(2, x);
   CHECK_DIM(4, w);
-  CHECK_DIM(1, indicies);
+  CHECK_DIM(1, indices);
 
   int64_t B = x.size(0);
   int64_t h_in = x.size(1);
@@ -105,7 +105,7 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
   int64_t num_layers = w.size(1);
   CHECK_EQ(w.size(3), h_in);
   CHECK_EQ(w.size(2), h_out);
-  CHECK_EQ(indicies.size(0), x.size(0));
+  CHECK_EQ(indices.size(0), x.size(0));
   CHECK_EQ(y.size(0), x.size(0));
   const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
   bool ok = false;
@@ -120,14 +120,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -140,14 +140,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -160,14 +160,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -186,14 +186,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -206,14 +206,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -226,14 +226,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -252,14 +252,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -272,14 +272,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -292,14 +292,14 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         case at::ScalarType::BFloat16:
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out, 0,
+                                  indices.data_ptr<int64_t>(), h_in, h_out, 0,
                                   h_out, B, num_layers, layer_idx, scale);
           break;
         default:
@@ -319,25 +319,25 @@ void dispatch_bgmv(torch::Tensor y, torch::Tensor x, torch::Tensor w,
 }
 
 void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
-                             torch::Tensor indicies, int64_t layer_idx,
+                             torch::Tensor indices, int64_t layer_idx,
                              double scale, int64_t h_in, int64_t h_out,
                              int64_t y_offset) {
   CHECK_INPUT(y);
   CHECK_INPUT(x);
   CHECK_INPUT(w);
-  CHECK_INPUT(indicies);
+  CHECK_INPUT(indices);
 
   CHECK_DIM(2, y);
   CHECK_DIM(2, x);
   CHECK_DIM(4, w);
-  CHECK_DIM(1, indicies);
+  CHECK_DIM(1, indices);
 
   int64_t B = x.size(0);
   int64_t num_layers = w.size(1);
   int64_t full_y_size = y.size(1);
   CHECK_EQ(w.size(3), h_in);
   CHECK_EQ(w.size(2), h_out);
-  CHECK_EQ(indicies.size(0), x.size(0));
+  CHECK_EQ(indices.size(0), x.size(0));
   CHECK_EQ(y.size(0), x.size(0));
   const at::cuda::OptionalCUDAGuard device_guard(device_of(x));
   bool ok = false;
@@ -352,7 +352,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -360,7 +360,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -374,7 +374,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -382,7 +382,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -396,7 +396,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -404,7 +404,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_half *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -424,7 +424,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -432,7 +432,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -446,7 +446,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -454,7 +454,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -468,7 +468,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -476,7 +476,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<nv_bfloat16 *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -496,7 +496,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -504,7 +504,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_half *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -518,7 +518,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -526,7 +526,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<nv_bfloat16 *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -540,7 +540,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_half *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;
@@ -548,7 +548,7 @@ void dispatch_bgmv_low_level(torch::Tensor y, torch::Tensor x, torch::Tensor w,
           ok = launch_bgmv_kernel(static_cast<float *>(y.data_ptr()),
                                   static_cast<float *>(x.data_ptr()),
                                   static_cast<nv_bfloat16 *>(w.data_ptr()),
-                                  indicies.data_ptr<int64_t>(), h_in, h_out,
+                                  indices.data_ptr<int64_t>(), h_in, h_out,
                                   y_offset, full_y_size, B, num_layers,
                                   layer_idx, scale);
           break;

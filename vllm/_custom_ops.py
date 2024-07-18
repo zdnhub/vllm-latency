@@ -387,10 +387,10 @@ def moe_align_block_size(topk_ids: torch.Tensor, num_experts: int,
 
 
 def topk_softmax(topk_weights: torch.Tensor, topk_ids: torch.Tensor,
-                 token_expert_indicies: torch.Tensor,
+                 token_expert_indices: torch.Tensor,
                  gating_output: float) -> None:
     torch.ops._moe_C.topk_softmax(topk_weights, topk_ids,
-                                  token_expert_indicies, gating_output)
+                                  token_expert_indices, gating_output)
 
 
 def reshape_and_cache(
@@ -499,11 +499,11 @@ def dispatch_bgmv(
     y: torch.Tensor,
     x: torch.Tensor,
     w_t_all: torch.Tensor,
-    indicies: torch.Tensor,
+    indices: torch.Tensor,
     layer_idx: int,
     scale: float,
 ) -> None:
-    torch.ops._punica_C.dispatch_bgmv(y, x, w_t_all, indicies, layer_idx,
+    torch.ops._punica_C.dispatch_bgmv(y, x, w_t_all, indices, layer_idx,
                                       scale)
 
 
@@ -511,7 +511,7 @@ def dispatch_bgmv_low_level(
     y: torch.Tensor,
     x: torch.Tensor,
     w_t_all: torch.Tensor,
-    indicies: torch.Tensor,
+    indices: torch.Tensor,
     layer_idx: int,
     scale: float,
     h_in: int,
@@ -522,7 +522,7 @@ def dispatch_bgmv_low_level(
         y,
         x,
         w_t_all,
-        indicies,
+        indices,
         layer_idx,
         scale,
         h_in,

@@ -68,11 +68,11 @@ def convert_mapping(
                 LoRA indices.
             sampler_indices: Tensor of shape [batch_size] mapping requests to
                 LoRA indices for sampler. For generation, this will be the
-                same as base_indicies. For prefill, this will map requests
+                same as base_indices. For prefill, this will map requests
                 to LoRA indices.
             sampler_indices_padded: Tensor of shape [batch_size] mapping
                 requests to LoRA indices for sampler with padding.
-                Same as sampler_indicies, but -1 is replaced with
+                Same as sampler_indices, but -1 is replaced with
                 max_loras.
             embeddings_indices: Tensor of shape [2, batch_size] mapping
                 requests to embedding indices. First row is for embeddings
@@ -441,7 +441,7 @@ class LoRAModelManager(AdapterModelManager):
         # Scaling factor -> offset to the sin_cos_cache to it.
         # Used for long context lora.
         self.scaling_factor_to_offset: Dict[float, int] = {}
-        # 4 is the number of indicies tensors defined above
+        # 4 is the number of indices tensors defined above
         # base_indices, sampler_indices, sampler_indices_padded,
         # embeddings_indices
         self.indices_len: List[Optional[int]] = [None] * 4

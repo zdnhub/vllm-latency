@@ -42,11 +42,11 @@ template <int feat_in, int feat_out, size_t vec_size, size_t X_copy_size,
 __global__ void
 bgmv_shrink_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
                    const W_T *__restrict__ W,
-                   const int64_t *__restrict__ indicies, int64_t y_offset,
+                   const int64_t *__restrict__ indices, int64_t y_offset,
                    int64_t full_y_size, int64_t num_layers, int64_t layer_idx,
                    float scale) {
   size_t batch_idx = blockIdx.y;
-  int64_t idx = indicies[batch_idx] * num_layers + layer_idx;
+  int64_t idx = indices[batch_idx] * num_layers + layer_idx;
   if (idx < 0) {
     return;
   }
@@ -173,11 +173,11 @@ template <int feat_in, int feat_out, size_t vec_size, size_t X_copy_size,
 __global__ void
 bgmv_shrink_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
                    const W_T *__restrict__ W,
-                   const int64_t *__restrict__ indicies, int64_t y_offset,
+                   const int64_t *__restrict__ indices, int64_t y_offset,
                    int64_t full_y_size, int64_t num_layers, int64_t layer_idx,
                    float scale) {
   size_t batch_idx = blockIdx.y;
-  int64_t idx = indicies[batch_idx] * num_layers + layer_idx;
+  int64_t idx = indices[batch_idx] * num_layers + layer_idx;
   if (idx < 0) {
     return;
   }
@@ -246,11 +246,11 @@ template <int feat_in, int feat_out, size_t vec_size, int tx, int ty, int tz,
 __global__ void
 bgmv_expand_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
                    const W_T *__restrict__ W,
-                   const int64_t *__restrict__ indicies, int64_t y_offset,
+                   const int64_t *__restrict__ indices, int64_t y_offset,
                    int64_t full_y_size, int64_t num_layers, int64_t layer_idx,
                    float scale) {
   size_t batch_idx = blockIdx.y;
-  int64_t idx = indicies[batch_idx] * num_layers + layer_idx;
+  int64_t idx = indices[batch_idx] * num_layers + layer_idx;
 
   if (idx < 0) {
     return;
@@ -301,7 +301,7 @@ template <int feat_in, int feat_out, typename in_T, typename out_T,
           typename W_T>
 void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
                  const W_T *__restrict__ W,
-                 const int64_t *__restrict__ indicies, int64_t y_offset,
+                 const int64_t *__restrict__ indices, int64_t y_offset,
                  int64_t full_y_size, int64_t batch_size, int64_t num_layers,
                  int64_t layer_idx, float scale) {
   constexpr size_t vec_size = 8;
@@ -322,7 +322,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
       dim3 nthrs(tx, ty, tz);
 
       bgmv_expand_kernel<feat_in, feat_out, vec_size, tx, ty, tz>
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,
                                         full_y_size, num_layers, layer_idx,
                                         scale);
     } else if (16 % tx == 0 && feat_out % (16 / tx * tz) == 0) {
@@ -331,7 +331,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
       dim3 nthrs(tx, ty, tz);
 
       bgmv_expand_kernel<feat_in, feat_out, vec_size, tx, ty, tz>
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,
                                         full_y_size, num_layers, layer_idx,
                                         scale);
     } else {
@@ -340,7 +340,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
       dim3 nthrs(tx, ty, tz);
 
       bgmv_expand_kernel<feat_in, feat_out, vec_size, tx, ty, tz>
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,
                                         full_y_size, num_layers, layer_idx,
                                         scale);
     }
@@ -359,7 +359,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
 
       bgmv_shrink_kernel<feat_in, feat_out, vec_size, vec_size * sizeof(in_T),
                          vec_size * sizeof(W_T), tx, ty, tz>
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,
                                         full_y_size, num_layers, layer_idx,
                                         scale);
     } else if constexpr (feat_in % (vec_size / 2 * 32) == 0) {
@@ -372,7 +372,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
       bgmv_shrink_kernel<feat_in, feat_out, vec_size / 2,
                          vec_size * sizeof(in_T) / 2,
                          vec_size * sizeof(W_T) / 2, tx, ty, tz>
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,
                                         full_y_size, num_layers, layer_idx,
                                         scale);
     } else if constexpr (feat_in % (vec_size / 2 * 16) == 0) {
@@ -385,7 +385,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
       bgmv_shrink_kernel<feat_in, feat_out, vec_size / 2,
                          vec_size * sizeof(in_T) / 2,
                          vec_size * sizeof(W_T) / 2, tx, ty, tz>
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,
                                         full_y_size, num_layers, layer_idx,
                                         scale);
     }
@@ -406,7 +406,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
                           vec_size_shrink * sizeof(in_T),                   \
                           vec_size_shrink * sizeof(W_T),                    \
                           tx, ty, tz>                                       \
-          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indicies, y_offset,        \
+          <<<nblks, nthrs, 0, stream>>>(Y, X, W, indices, y_offset,        \
                                         full_y_size, num_layers, layer_idx, \
                                         scale);                             \
     }
@@ -439,7 +439,7 @@ void bgmv_kernel(out_T *__restrict__ Y, const in_T *__restrict__ X,
 #define INST_BGMV(feat_in, feat_out, in_T, out_T, W_T)                         \
   template void bgmv_kernel<feat_in, feat_out>(                                \
       out_T * __restrict__ Y, const in_T *__restrict__ X,                      \
-      const W_T *__restrict__ W, const int64_t *__restrict__ indicies,         \
+      const W_T *__restrict__ W, const int64_t *__restrict__ indices,         \
       int64_t y_offset, int64_t full_y_size, int64_t batch_size,               \
       int64_t num_layers, int64_t layer_idx, float scale);
 
