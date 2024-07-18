@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ class CompressedTensorsConfig(QuantizationConfig):
     def __init__(self,
                  target_scheme_map: Dict[str, Any],
                  ignore: List[str],
-                 quant_format: str,
+                 quant_format: Optional[str],
                  kv_cache_scheme: Optional[Dict[str, Any]] = None):
 
         self.ignore = ignore
@@ -66,8 +66,8 @@ class CompressedTensorsConfig(QuantizationConfig):
     @classmethod
     def from_config(cls, config: Dict[str, Any]) -> "CompressedTensorsConfig":
         target_scheme_map: Dict[str, Any] = dict()
-        ignore: List[str] = config.get("ignore", None)
-        quant_format: str = config.get("format", None)
+        ignore: List[str] = config.get("ignore", [])
+        quant_format: Union[str, None] = config.get("format")
 
         # The quant_config has multiple config_groups, each containing
         # an input_activations key with details about how the activations are
@@ -164,7 +164,8 @@ class CompressedTensorsConfig(QuantizationConfig):
         is_symmetric_activation = input_quant.symmetric
         is_per_tensor_activation = (
             input_quant.strategy == QuantizationStrategy.TENSOR)
-        if not (is_symmetric_activation and is_per_tensor_activation):
+        if not (is_symmetric_activation  # noqa: SIM103
+                and is_per_tensor_activation):
             return False
 
         # All conditions satisfied.
