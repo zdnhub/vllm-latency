@@ -32,7 +32,6 @@ class Fp8Config(QuantizationConfig):
         self,
         is_checkpoint_fp8_serialized: bool = False,
         activation_scheme: str = "dynamic",
-        quant_source: str = "default",
     ) -> None:
         self.is_checkpoint_fp8_serialized = is_checkpoint_fp8_serialized
         if is_checkpoint_fp8_serialized:
@@ -42,7 +41,6 @@ class Fp8Config(QuantizationConfig):
             raise ValueError(
                 f"Unsupported activation scheme {activation_scheme}")
         self.activation_scheme = activation_scheme
-        self.quant_source = quant_source
 
     @classmethod
     def get_name(cls) -> str:
@@ -64,28 +62,13 @@ class Fp8Config(QuantizationConfig):
     def from_config(cls, config: Dict[str, Any]) -> "Fp8Config":
         quant_method = cls.get_from_keys(config, ["quant_method"])
         is_checkpoint_fp8_serialized = ("fp8" in quant_method)
-        activation_scheme = cls.get_from_keys(config, ["activation_scheme"]) 
-        quant_source = "default"
-        if is_checkpoint_fp8_serialized and "static" in activation_scheme:
-            quant_source = cls.get_from_keys(config, ["quant_source"])
-        return cls(
-            is_checkpoint_fp8_serialized=is_checkpoint_fp8_serialized,
-            activation_scheme=activation_scheme,
-            quant_source=quant_source,
-        )
+        activation_scheme = cls.get_from_keys(config, ["activation_scheme"])
+        return cls(is_checkpoint_fp8_serialized=is_checkpoint_fp8_serialized,
+                   activation_scheme=activation_scheme)
 
     def get_quant_method(
             self, layer: torch.nn.Module) -> Optional["QuantizeMethodBase"]:
         from vllm.attention.layer import Attention  # Avoid circular import
-        from vllm.model_executor.layers.quantization.modelopt import (
-            ModelOptFp8LinearMethod)
-
-        quant_source = self.quant_source
-        quant_source_dicts = {
-            "default": [Fp8LinearMethod, Fp8KVCacheMethod],
-            "modelopt": [ModelOptFp8LinearMethod, Fp8KVCacheMethod],
-            "neural_magic": [Fp8LinearMethod, Fp8KVCacheMethod],
-        }
 
         if isinstance(layer, LinearBase):
             return Fp8LinearMethod(self)
@@ -214,13 +197,6 @@ class Fp8LinearMethod(LinearMethodBase):
               layer: torch.nn.Module,
               x: torch.Tensor,
               bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-            return apply_quantize(layer, x, self.cutlass_fp8_supported, bias) 
-
-def apply_quantize(layer: torch.nn.Module,
-              x: torch.Tensor,
-              is_cutlass_fp8_supported: bool,
-              bias: Optional[torch.Tensor] = None,
-              ) -> torch.Tensor:
 
         if self.use_marlin:
             return apply_fp8_marlin_linear(
