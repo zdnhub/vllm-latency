@@ -20,7 +20,6 @@ GPTQ_MARLIN_24_MAX_PARALLEL = 64
 
 GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES = [scalar_types.u4b8, scalar_types.u8b128]
 GPTQ_MARLIN_24_SUPPORTED_GROUP_SIZES = [-1, 128]
-GPTQ_MARLIN_24_SUPPORTED_SYM = [True]
 
 
 class GPTQMarlin24Config(QuantizationConfig):
@@ -32,16 +31,18 @@ class GPTQMarlin24Config(QuantizationConfig):
         weight_bits: int,
         group_size: int,
     ) -> None:
-        self.quant_type = {
+        quant_type = {
             4: scalar_types.u4b8,
             8: scalar_types.u8b128,
-        }[weight_bits]
+        }.get(weight_bits)
+
         self.group_size = group_size
 
         # Verify
-        if self.quant_type not in GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES:
+        if quant_type is None or \
+            quant_type not in GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES:
             raise ValueError(
-                f"Marlin_24 does not support quant_type = {self.quant_type}. "
+                f"Marlin_24 does not support quant_type = {quant_type}. "
                 f"Only weight_bits = {GPTQ_MARLIN_24_SUPPORTED_QUANT_TYPES} "
                 "are supported.")
         if self.group_size not in GPTQ_MARLIN_24_SUPPORTED_GROUP_SIZES:
@@ -50,8 +51,10 @@ class GPTQMarlin24Config(QuantizationConfig):
                 f"Only group_sizes = {GPTQ_MARLIN_24_SUPPORTED_GROUP_SIZES} "
                 "are supported.")
 
+        self.quant_type = quant_type
+
         # 4 Bits packed into 32 bit datatype.
-        self.pack_factor = 32 // self.quant_type
+        self.pack_factor = 32 // self.quant_type.size_bits
 
         # Tile size used by marlin kernels.
         self.tile_size = 16
