@@ -12,12 +12,12 @@ class NanRepr(Enum):
 
 # naming generally follows: https://github.com/jax-ml/ml_dtypes
 # for floating point types (leading f):
-#  - trailing f: means finite values only (no infinities)
-#  - trailing n: means nans are supported
-#  - no-trailing letters: means it follows IEEE 754 conventions
 #  - E_: exponent size
 #  - M_: mantissa size
-# for integer types:
+#  - no-trailing letters: means it follows IEEE 754 conventions
+#  - trailing f: means finite values only (no infinities)
+#  - trailing n: means nans are supported (non-standard encoding)
+# for integer types (leading s/u):
 #  - leading s: means signed
 #  - leading u: means unsigned
 #  - number following s/u: number of bits

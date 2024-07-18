@@ -285,9 +285,10 @@ class GPTQMarlin24LinearMethod(LinearMethodBase):
         size_k = x_2d.shape[1]
         size_n = scales.shape[1]
 
-        output_2d = ops.gptq_marlin_24_gemm(
-            x_2d, qweight, meta, scales, workspace,
-            self.quant_config.quant_type.size_bits, size_m, size_n, size_k)
+        output_2d = ops.gptq_marlin_24_gemm(x_2d, qweight, meta, scales,
+                                            workspace,
+                                            self.quant_config.quant_type,
+                                            size_m, size_n, size_k)
 
         output = output_2d.view(x.shape[:-1] + (output_2d.shape[1], ))
 

@@ -180,12 +180,12 @@ class ScalarType {
     /*
      * generally follows: https://github.com/jax-ml/ml_dtypes
      * for floating point types (leading f):
-     *  - trailing f: means finite values only (no infinities)
-     *  - trailing n: means nans are supported
-     *  - no-trailing letters: means it follows IEEE 754 conventions
      *  - E_: exponent size
      *  - M_: mantissa size
-     * for integer types:
+     *  - no-trailing letters: means it follows IEEE 754 conventions
+     *  - trailing f: means finite values only (no infinities)
+     *  - trailing n: means nans are supported (non-standard encoding)
+     * for integer types (leading s/u):
      *  - leading s: means signed
      *  - leading u: means unsigned
      *  - number following s/u: number of bits
@@ -337,17 +337,17 @@ using ScalarTypeTorchPtr = c10::intrusive_ptr<ScalarTypeTorch>;
 
 /*
  * generally follows: https://github.com/jax-ml/ml_dtypes
- * for floating point types (leading F):
- *  - trailing f: means finite values only (no infinities)
- *  - trailing n: means nans are supported
- *  - no-trailing letters: means it follows IEEE 754 conventions
+ * for floating point types (leading f):
  *  - E_: exponent size
  *  - M_: mantissa size
- * for integer types:
- *  - leading S: means signed
- *  - leading U: means unsigned
- *  - number following S/U: number of bits
- *  - BX: indicates a non-zero bias of X
+ *  - no-trailing letters: means it follows IEEE 754 conventions
+ *  - trailing f: means finite values only (no infinities)
+ *  - trailing n: means nans are supported (non-standard encoding)
+ * for integer types (leading s/u):
+ *  - leading s: means signed
+ *  - leading u: means unsigned
+ *  - number following s/u: number of bits
+ *  - bX: indicates a non-zero bias of X
  */
 static inline constexpr auto kS4 = ScalarType::s(4);
 static inline constexpr auto kU4 = ScalarType::u(4);
