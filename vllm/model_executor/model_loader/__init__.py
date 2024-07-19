@@ -11,6 +11,7 @@ from vllm.model_executor.model_loader.utils import (
     get_architecture_class_name, get_model_architecture)
 from vllm.model_executor.model_optimizer.model_optimizer import optimizer
 
+
 def get_model(*, model_config: ModelConfig, load_config: LoadConfig,
               device_config: DeviceConfig, parallel_config: ParallelConfig,
               scheduler_config: SchedulerConfig,
@@ -19,13 +20,13 @@ def get_model(*, model_config: ModelConfig, load_config: LoadConfig,
               cache_config: CacheConfig) -> nn.Module:
     loader = get_model_loader(load_config)
     m = loader.load_model(model_config=model_config,
-                             device_config=device_config,
-                             lora_config=lora_config,
-                             multimodal_config=multimodal_config,
-                             parallel_config=parallel_config,
-                             scheduler_config=scheduler_config,
-                             cache_config=cache_config)
-    return optimizer(m) #, fullgraph=True)
+                          device_config=device_config,
+                          lora_config=lora_config,
+                          multimodal_config=multimodal_config,
+                          parallel_config=parallel_config,
+                          scheduler_config=scheduler_config,
+                          cache_config=cache_config)
+    return optimizer(m)  #, fullgraph=True)
 
 
 __all__ = [
