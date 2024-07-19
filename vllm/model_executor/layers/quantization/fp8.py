@@ -52,7 +52,7 @@ class Fp8Config(QuantizationConfig):
 
     @classmethod
     def get_min_capability(cls) -> int:
-        return 80
+        return 70
 
     @classmethod
     def get_config_filenames(cls) -> List[str]:
@@ -108,7 +108,8 @@ class Fp8LinearMethod(LinearMethodBase):
         # kernel for fast weight-only FP8 quantization
         capability = current_platform.get_device_capability()
         capability = capability[0] * 10 + capability[1]
-        self.use_marlin = capability < 89
+        self.use_marlin = capability >= 80 and capability < 89
+        self.native_fp8_support = capability >= 89
 
     def create_weights(
         self,
@@ -207,14 +208,23 @@ class Fp8LinearMethod(LinearMethodBase):
                 size_n=layer.output_size_per_partition,
                 size_k=layer.input_size_per_partition,
                 bias=bias)
-
-        return apply_fp8_linear(
-            input=x,
-            weight=layer.weight,
-            weight_scale=layer.weight_scale,
-            input_scale=layer.input_scale,
-            bias=bias,
-            cutlass_fp8_supported=self.cutlass_fp8_supported)
+        elif self.native_fp8_support:
+            return apply_fp8_linear(
+                input=x,
+                weight=layer.weight,
+                weight_scale=layer.weight_scale,
+                input_scale=layer.input_scale,
+                bias=bias,
+                cutlass_fp8_supported=self.cutlass_fp8_supported)
+        else:
+            # Without hardware support for FP8 W8A8, we dequantize and multiply
+            # in original precision
+            qinput, x_scale = ops.scaled_fp8_quant(x, layer.input_scale)
+            return torch.nn.functional.linear(
+                qinput.to(x.dtype) * x_scale,
+                layer.weight.t().to(x.dtype) * layer.weight_scale,
+                bias=bias,
+            )
 
 
 class Fp8MoEMethod(FusedMoEMethodBase):
