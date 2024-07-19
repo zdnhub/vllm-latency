@@ -17,6 +17,7 @@ from vllm.model_executor.layers.quantization.gptq_marlin import (
 from vllm.model_executor.layers.quantization.gptq_marlin_24 import (
     GPTQMarlin24Config)
 from vllm.model_executor.layers.quantization.marlin import MarlinConfig
+from vllm.model_executor.layers.quantization.modelopt import ModelOptFp8Config
 from vllm.model_executor.layers.quantization.squeezellm import SqueezeLLMConfig
 
 QUANTIZATION_METHODS: Dict[str, Type[QuantizationConfig]] = {
@@ -24,6 +25,7 @@ QUANTIZATION_METHODS: Dict[str, Type[QuantizationConfig]] = {
     "awq": AWQConfig,
     "deepspeedfp": DeepSpeedFPConfig,
     "fp8": Fp8Config,
+    "modelopt": ModelOptFp8Config,
     # The order of gptq methods is important for config.py iteration over
     # override_quantization_method(..)
     "marlin": MarlinConfig,
