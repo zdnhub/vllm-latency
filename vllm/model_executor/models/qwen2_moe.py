@@ -435,9 +435,10 @@ class Qwen2MoeForCausalLM(nn.Module):
                 # Skip loading extra bias for GPTQ models.
                 if name.endswith(".bias") and name not in params_dict:
                     continue
+                if name.endswith(".g_idx") and name not in params_dict:
+                    continue
                 if name not in params_dict:
                     continue
-
                 param = params_dict[name]
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
@@ -446,6 +447,8 @@ class Qwen2MoeForCausalLM(nn.Module):
                 for mapping in expert_params_mapping:
                     param_name, weight_name, expert_id, shard_id = mapping
                     if weight_name not in name:
+                        continue
+                    if 'g_idx' in name:
                         continue
                     name = name.replace(weight_name, param_name)
                     param = params_dict[name]
@@ -459,6 +462,8 @@ class Qwen2MoeForCausalLM(nn.Module):
                 else:
                     # Skip loading extra bias for GPTQ models.
                     if name.endswith(".bias") and name not in params_dict:
+                        continue
+                    if name.endswith(".g_idx") and name not in params_dict:
                         continue
                     # Remapping the name of FP8 kv-scale.
                     if name.endswith("kv_scale"):
