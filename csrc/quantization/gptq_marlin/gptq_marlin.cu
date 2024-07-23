@@ -1188,8 +1188,8 @@ __global__ void Marlin(
       frag_zp[3] = frag_zp_1[1];
     }
 
-  // We have the m dimension as the inner loop in order to encourage
-  // overlapping dequantization and matmul operations.
+  // We have the m dimension as the inner loop in order to encourage overlapping
+  // dequantization and matmul operations.
   #pragma unroll
     for (int j = 0; j < 4; j++) {
       FragB frag_b0;

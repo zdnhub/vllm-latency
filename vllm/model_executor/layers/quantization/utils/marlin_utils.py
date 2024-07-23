@@ -80,7 +80,7 @@ def verify_marlin_supported(quant_type: ScalarType,
     cond, err_msg = _check_marlin_supported(quant_type, group_size, has_zp)
     if not cond:
         assert err_msg is not None
-        raise ValueError("GPTQ" + err_msg)
+        raise ValueError(err_msg)
 
 
 def verify_marlin_supports_shape(output_size_per_partition: int,
