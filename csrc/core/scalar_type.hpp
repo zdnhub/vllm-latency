@@ -348,7 +348,7 @@ static inline constexpr auto kU4 = ScalarType::uint(4);
 static inline constexpr auto kU4B8 = ScalarType::uint(4, 8);
 static inline constexpr auto kS8 = ScalarType::int_(8);
 static inline constexpr auto kU8 = ScalarType::uint(8);
-static inline constexpr auto kU8B128 = ScalarType::int_(8, 128);
+static inline constexpr auto kU8B128 = ScalarType::uint(8, 128);
 
 static inline constexpr auto kFE3M2f =
     ScalarType::float_(3, 2, true, ScalarType::NAN_NONE);
