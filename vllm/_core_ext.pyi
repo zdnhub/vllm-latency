@@ -36,7 +36,7 @@ class ScalarType:
 
     @classmethod
     def float_(cls, exponent: int, mantissa: int, finite_values_only: bool,
-              nan_repr: int) -> ScalarType:
+               nan_repr: int) -> ScalarType:
         """
         Create a non-standard floating point type 
         (i.e. does not follow IEEE 754 conventions).
