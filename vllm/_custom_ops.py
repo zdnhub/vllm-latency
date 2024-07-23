@@ -288,7 +288,7 @@ def gptq_marlin_gemm(a: torch.Tensor, b_q_weight: torch.Tensor,
                      g_idx: torch.Tensor, perm: torch.Tensor,
                      workspace: torch.Tensor, b_q_type: ScalarType,
                      size_m: int, size_n: int, size_k: int, is_k_full: bool,
-                     has_zp: bool) -> torch.Tensor:
+                     has_zp: bool = False) -> torch.Tensor:
     return torch.ops._C.gptq_marlin_gemm(a, b_q_weight, b_scales, b_zeros,
                                          g_idx, perm, workspace, b_q_type,
                                          size_m, size_n, size_k, is_k_full,

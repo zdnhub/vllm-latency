@@ -110,9 +110,6 @@ def quantize_weights(w: torch.Tensor,
         maybe_w_zp = maybe_w_zp.reshape((-1, size_n)).contiguous()
         maybe_w_zp = maybe_w_zp.to(device=orig_device)
 
-    print(maybe_w_zp)
-    print(w_ref)
-
     return (
         w_ref.to(device=orig_device),
         w_q.to(device=orig_device),
