@@ -35,6 +35,7 @@ from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
 from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
+from vllm.entrypoints.openai.serving_engine import BaseModelPath
 from vllm.entrypoints.openai.serving_tokenization import (
     OpenAIServingTokenization)
 from vllm.logger import init_logger
@@ -226,6 +227,11 @@ async def build_server(
     else:
         served_model_names = [args.model]
 
+    base_model_paths = [
+        BaseModelPath(name=name, model_path=args.model)
+        for name in served_model_names
+    ]
+
     global engine, engine_args
 
     engine_args = AsyncEngineArgs.from_cli_args(args)
@@ -248,7 +254,7 @@ async def build_server(
     openai_serving_chat = OpenAIServingChat(
         engine,
         model_config,
-        served_model_names,
+        base_model_paths,
         args.response_role,
         lora_modules=args.lora_modules,
         prompt_adapters=args.prompt_adapters,
@@ -258,7 +264,7 @@ async def build_server(
     openai_serving_completion = OpenAIServingCompletion(
         engine,
         model_config,
-        served_model_names,
+        base_model_paths,
         lora_modules=args.lora_modules,
         prompt_adapters=args.prompt_adapters,
         request_logger=request_logger,
@@ -266,13 +272,13 @@ async def build_server(
     openai_serving_embedding = OpenAIServingEmbedding(
         engine,
         model_config,
-        served_model_names,
+        base_model_paths,
         request_logger=request_logger,
     )
     openai_serving_tokenization = OpenAIServingTokenization(
         engine,
         model_config,
-        served_model_names,
+        base_model_paths,
         lora_modules=args.lora_modules,
         request_logger=request_logger,
         chat_template=args.chat_template,
