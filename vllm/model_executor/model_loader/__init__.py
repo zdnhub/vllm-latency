@@ -11,6 +11,8 @@ from vllm.model_executor.model_loader.utils import (
     get_architecture_class_name, get_model_architecture)
 from vllm.model_executor.model_optimizer.model_optimizer import optimizer
 
+import os
+
 
 def get_model(*, model_config: ModelConfig, load_config: LoadConfig,
               device_config: DeviceConfig, parallel_config: ParallelConfig,
@@ -26,7 +28,10 @@ def get_model(*, model_config: ModelConfig, load_config: LoadConfig,
                           parallel_config=parallel_config,
                           scheduler_config=scheduler_config,
                           cache_config=cache_config)
-    return optimizer(m)  #, fullgraph=True)
+    if "VLLM_DISABLE_MODEL_OPTIMIZER" in os.environ:
+        return m
+    else:
+        return optimizer(m)  #, fullgraph=True)
 
 
 __all__ = [
