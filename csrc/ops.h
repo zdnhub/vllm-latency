@@ -126,7 +126,8 @@ void cutlass_scaled_mm_azp(torch::Tensor& out, torch::Tensor const& a,
 #endif
 
 void static_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
-                              torch::Tensor const& scale);
+                              torch::Tensor const& scale,
+                              c10::optional<torch::Tensor> const& azp);
 
 void dynamic_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
                                torch::Tensor& scales,
