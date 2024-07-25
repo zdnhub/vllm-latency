@@ -14,7 +14,9 @@ from vllm.logger import init_logger
 
 logger = init_logger(__name__)
 
-
+# dynamo doesn't like triton
+#@torch.fx.wrap
+#@torch.compiler.allow_in_graph
 @triton.jit
 def fused_moe_kernel(
     # Pointers to matrices
@@ -452,7 +454,8 @@ def fused_experts(hidden_states: torch.Tensor,
     E, N, _ = w1.shape
     # We execute the fused_moe kernel in chunks to circumvent this issue:
     # https://github.com/vllm-project/vllm/issues/5938
-    CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
+    # Note: harcode CHUNK_SIZE as temporary hack to get around dynamo issue
+    CHUNK_SIZE = 65536 #envs.VLLM_FUSED_MOE_CHUNK_SIZE
     M = min(num_tokens, CHUNK_SIZE)
 
     get_config_func = functools.partial(
