@@ -663,6 +663,7 @@ class FlashAttentionImpl(AttentionImpl):
                         max_seqlen_k=max_seq_len,
                         softmax_scale=self.scale,
                         causal=True,
+                        window_size=(-1, -1),
                         alibi_slopes=self.alibi_slopes,
                         block_table=prefill_meta.block_tables,
                         out_shape=output[:num_prefill_tokens].size(),
