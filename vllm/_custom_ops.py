@@ -20,6 +20,7 @@ with contextlib.suppress(ImportError):
     import vllm._punica_C  # noqa: F401
 
 
+# Note: don't use this in code that will be compiled
 def is_custom_op_supported(op_name: str) -> bool:
     op, overloads = torch._C._jit_get_operation(op_name)
     return op is not None

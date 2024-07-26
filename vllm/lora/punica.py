@@ -7,9 +7,10 @@ import torch
 from vllm import _custom_ops as ops
 from vllm.platforms import current_platform
 
+PUNICA_SUPPORT = ops.is_custom_op_supported("_punica_C::dispatch_bgmv")
 
 def _check_punica_support():
-    if ops.is_custom_op_supported("_punica_C::dispatch_bgmv"):
+    if PUNICA_SUPPORT:
         return
 
     if current_platform.get_device_capability() < (8, 0):
