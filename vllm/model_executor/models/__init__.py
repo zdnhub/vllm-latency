@@ -25,6 +25,7 @@ _GENERATION_MODELS = {
     "DeciLMForCausalLM": ("decilm", "DeciLMForCausalLM"),
     "DeepseekForCausalLM": ("deepseek", "DeepseekForCausalLM"),
     "DeepseekV2ForCausalLM": ("deepseek_v2", "DeepseekV2ForCausalLM"),
+    "MultiModalityCausalLM": ("deepseek_vl", "DeepSeekMultiModalityCausalLM"),
     "FalconForCausalLM": ("falcon", "FalconForCausalLM"),
     "FuyuForCausalLM": ("fuyu", "FuyuForCausalLM"),
     "GemmaForCausalLM": ("gemma", "GemmaForCausalLM"),
