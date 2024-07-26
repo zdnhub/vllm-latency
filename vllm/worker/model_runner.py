@@ -24,6 +24,8 @@ except ImportError:
     FLASHINFER_WORKSPACE_BUFFER_SIZE = 0
 
 from vllm.attention import AttentionMetadata, get_attn_backend
+from vllm.attention.backends.placeholder_attn import (
+    PlaceholderAttentionBackend)
 from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
                          ModelConfig, MultiModalConfig, ParallelConfig,
                          PromptAdapterConfig, SchedulerConfig)
@@ -696,7 +698,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
             self.model_config.dtype,
             self.kv_cache_dtype,
             self.block_size,
-        ) if num_attn_heads else None
+        ) if num_attn_heads else PlaceholderAttentionBackend()
 
         # Multi-modal data support
         self.multi_modal_input_mapper = MULTIMODAL_REGISTRY \
@@ -1519,8 +1521,9 @@ class CUDAGraphRunner:
         # Copy the input tensors to the input buffers.
         self.input_buffers["input_ids"].copy_(input_ids, non_blocking=True)
         self.input_buffers["positions"].copy_(positions, non_blocking=True)
-        self.input_buffers["slot_mapping"].copy_(attn_metadata.slot_mapping,
-                                                 non_blocking=True)
+        if self.backend_name != "No attention":
+            self.input_buffers["slot_mapping"].copy_(
+                attn_metadata.slot_mapping, non_blocking=True)
         if self.backend_name != "flashinfer":
             self.input_buffers["seq_lens_tensor"].copy_(
                 attn_metadata.decode_metadata.seq_lens_tensor,
