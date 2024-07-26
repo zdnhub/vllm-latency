@@ -1,6 +1,6 @@
+import enum
 import functools
 import importlib
-import enum
 from typing import Dict, List, Optional, Type
 
 import torch.nn as nn
