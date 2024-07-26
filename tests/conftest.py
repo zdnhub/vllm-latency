@@ -3,7 +3,8 @@ import gc
 import os
 import sys
 from collections import UserList
-from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
+from typing import (Any, Dict, List, Optional, Sequence, Tuple, TypedDict,
+                    TypeVar, Union)
 
 import pytest
 import torch
@@ -19,7 +20,7 @@ from vllm.config import TokenizerPoolConfig
 from vllm.connections import global_http_connection
 from vllm.distributed import (destroy_distributed_environment,
                               destroy_model_parallel)
-from vllm.inputs import TextPrompt
+from vllm.inputs import PromptInputs, TextPrompt
 from vllm.logger import init_logger
 from vllm.sequence import SampleLogprobs
 from vllm.utils import (STR_DTYPE_TO_TORCH_DTYPE, cuda_device_count_stateless,
@@ -153,6 +154,7 @@ class HfRunner:
         is_embedding_model: bool = False,
         is_vision_model: bool = False,
         is_sparseml_model: bool = False,
+        is_simple_model: bool = False,
     ) -> None:
         torch_dtype = STR_DTYPE_TO_TORCH_DTYPE[dtype]
 
@@ -172,6 +174,9 @@ class HfRunner:
             elif is_sparseml_model:
                 from sparseml.transformers import SparseAutoModelForCausalLM
                 auto_cls = SparseAutoModelForCausalLM
+            elif is_simple_model:
+                from transformers import AutoModelForSequenceClassification
+                auto_cls = AutoModelForSequenceClassification
             else:
                 auto_cls = AutoModelForCausalLM
 
@@ -392,6 +397,17 @@ class HfRunner:
     def encode(self, prompts: List[str]) -> List[List[torch.Tensor]]:
         return self.model.encode(prompts)
 
+    def process(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+    ) -> torch.Tensor:
+        with torch.no_grad():
+            req_outputs = self.model(input_ids,
+                                     attention_mask,
+                                     return_dict=True)
+        return req_outputs
+
     def __enter__(self):
         return self
 
@@ -546,6 +562,14 @@ class VllmRunner:
             embedding = req_output.outputs.embedding
             outputs.append(embedding)
         return outputs
+
+    def process(
+        self,
+        prompts: Union[Union[PromptInputs, Sequence[PromptInputs]],
+                       Optional[Union[str, List[str]]]] = None,
+    ) -> torch.Tensor:
+        req_outputs = self.model.process(prompts)
+        return req_outputs
 
     def __enter__(self):
         return self
