@@ -8,13 +8,15 @@ from vllm.config import (CacheConfig, DeviceConfig, LoadConfig, LoRAConfig,
 from vllm.logger import init_logger
 from vllm.sequence import (IntermediateTensors, SequenceGroupMetadata,
                            SimpleOutput)
-from vllm.worker.model_runner import GPUModelRunnerBase, ModelInputForGPU
+from vllm.worker.model_runner import (GPUModelRunnerBase, ModelInputForGPU,
+                                      ModelInputForGPUBuilder)
 
 logger = init_logger(__name__)
 
 
 class SimpleModelRunner(GPUModelRunnerBase[ModelInputForGPU]):
     _model_input_cls: Type[ModelInputForGPU] = (ModelInputForGPU)
+    _builder_cls: Type[ModelInputForGPUBuilder] = ModelInputForGPUBuilder
 
     def __init__(
         self,

@@ -464,7 +464,7 @@ class LLM:
 
     def process(
         self,
-        inputs: Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
+        inputs: Union[PromptInputs, Sequence[PromptInputs]],
         use_tqdm: bool = True,
         lora_request: Optional[Union[List[LoRARequest], LoRARequest]] = None,
     ) -> List[SimpleRequestOutput]:
@@ -472,7 +472,7 @@ class LLM:
 
         Args:
             inputs: The inputs to the LLM. You may pass a sequence of inputs for
-                batch inference. See :class:`~vllm.inputs.PromptStrictInputs`
+                batch inference. See :class:`~vllm.inputs.PromptInputs`
                 for more details about the format of each input.
             use_tqdm: Whether to use tqdm to display the progress bar.
             lora_request: LoRA request to use for generation, if any.

@@ -20,7 +20,7 @@ from vllm.config import TokenizerPoolConfig
 from vllm.connections import global_http_connection
 from vllm.distributed import (destroy_distributed_environment,
                               destroy_model_parallel)
-from vllm.inputs import PromptStrictInputs, TextPrompt
+from vllm.inputs import PromptInputs, TextPrompt
 from vllm.logger import init_logger
 from vllm.sequence import SampleLogprobs
 from vllm.utils import (STR_DTYPE_TO_TORCH_DTYPE, cuda_device_count_stateless,
@@ -565,7 +565,7 @@ class VllmRunner:
 
     def process(
         self,
-        prompts: Union[Union[PromptStrictInputs, Sequence[PromptStrictInputs]],
+        prompts: Union[Union[PromptInputs, Sequence[PromptInputs]],
                        Optional[Union[str, List[str]]]] = None,
     ) -> torch.Tensor:
         req_outputs = self.model.process(prompts)
