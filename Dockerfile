@@ -89,7 +89,8 @@ ENV MAX_JOBS=${max_jobs}
 ARG nvcc_threads=8
 ENV NVCC_THREADS=$nvcc_threads
 # make sure punica kernels are built (for LoRA)
-ENV VLLM_INSTALL_PUNICA_KERNELS=1
+ARG punica_kernels=1
+ENV VLLM_INSTALL_PUNICA_KERNELS=$punica_kernels
 
 ARG buildkite_commit
 ENV BUILDKITE_COMMIT=${buildkite_commit}

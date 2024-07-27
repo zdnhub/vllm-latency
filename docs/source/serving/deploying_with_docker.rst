@@ -28,7 +28,7 @@ You can build and run vLLM from source via the provided `Dockerfile <https://git
 
 .. code-block:: console
 
-    $ DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag vllm/vllm-openai # optionally specifies: --build-arg max_jobs=8 --build-arg nvcc_threads=2
+    $ DOCKER_BUILDKIT=1 docker build . --target vllm-openai --tag vllm/vllm-openai # optionally specifies: --build-arg max_jobs=8 --build-arg nvcc_threads=2 --build-arg punica_kernels=0
 
 
 .. note::
