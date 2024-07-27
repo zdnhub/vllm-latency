@@ -9,6 +9,7 @@ from vllm.transformers_utils.configs.medusa import MedusaConfig
 from vllm.transformers_utils.configs.mlp_speculator import MLPSpeculatorConfig
 from vllm.transformers_utils.configs.mpt import MPTConfig
 from vllm.transformers_utils.configs.nemotron import NemotronConfig
+from vllm.transformers_utils.configs.teleflm import TeleFLMConfig
 
 __all__ = [
     "ChatGLMConfig",
@@ -19,4 +20,5 @@ __all__ = [
     "MedusaConfig",
     "MLPSpeculatorConfig",
     "NemotronConfig",
+    "TeleFLMConfig",
 ]
