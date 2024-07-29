@@ -63,10 +63,10 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(10)
             await engine.do_log_stats()
 
-    if not engine_args.disable_log_stats:
-        task = asyncio.create_task(_force_log())
-        _running_tasks.add(task)
-        task.add_done_callback(_running_tasks.remove)
+    # if not engine_args.disable_log_stats:
+    #     task = asyncio.create_task(_force_log())
+    #     _running_tasks.add(task)
+    #     task.add_done_callback(_running_tasks.remove)
 
     yield
 
@@ -217,19 +217,24 @@ async def init_app(args: Namespace,
                    llm_engine: Optional[AsyncLLMEngine] = None) -> FastAPI:
     app = build_app(args)
 
-    if args.served_model_name is not None:
-        served_model_names = args.served_model_name
-    else:
-        served_model_names = [args.model]
+    # if args.served_model_name is not None:
+    #     served_model_names = args.served_model_name
+    # else:
+    #     served_model_names = [args.model]
 
-    global engine, engine_args
+    served_model_names = "meta-llama/Meta-Llama-3-8B-Instruct"
 
-    engine_args = AsyncEngineArgs.from_cli_args(args)
-    engine = (llm_engine
-              if llm_engine is not None else AsyncLLMEngine.from_engine_args(
-                  engine_args, usage_context=UsageContext.OPENAI_API_SERVER))
+    from vllm.grpc.client import RPCClient
+    engine = RPCClient()
 
-    model_config = await engine.get_model_config()
+    # global engine, engine_args
+
+    # engine_args = AsyncEngineArgs.from_cli_args(args)
+    # engine = (llm_engine
+    #           if llm_engine is not None else AsyncLLMEngine.from_engine_args(
+    #               engine_args, usage_context=UsageContext.OPENAI_API_SERVER))
+
+    # model_config = await engine.get_model_config()
 
     if args.disable_log_requests:
         request_logger = None
@@ -241,40 +246,40 @@ async def init_app(args: Namespace,
     global openai_serving_embedding
     global openai_serving_tokenization
 
-    openai_serving_chat = OpenAIServingChat(
-        engine,
-        model_config,
-        served_model_names,
-        args.response_role,
-        lora_modules=args.lora_modules,
-        prompt_adapters=args.prompt_adapters,
-        request_logger=request_logger,
-        chat_template=args.chat_template,
-        return_tokens_as_token_ids=args.return_tokens_as_token_ids,
-    )
+    # openai_serving_chat = OpenAIServingChat(
+    #     engine,
+    #     model_config,
+    #     served_model_names,
+    #     args.response_role,
+    #     lora_modules=args.lora_modules,
+    #     prompt_adapters=args.prompt_adapters,
+    #     request_logger=request_logger,
+    #     chat_template=args.chat_template,
+    #     return_tokens_as_token_ids=args.return_tokens_as_token_ids,
+    # )
     openai_serving_completion = OpenAIServingCompletion(
         engine,
-        model_config,
+        # model_config,
         served_model_names,
         lora_modules=args.lora_modules,
         prompt_adapters=args.prompt_adapters,
         request_logger=request_logger,
         return_tokens_as_token_ids=args.return_tokens_as_token_ids,
     )
-    openai_serving_embedding = OpenAIServingEmbedding(
-        engine,
-        model_config,
-        served_model_names,
-        request_logger=request_logger,
-    )
-    openai_serving_tokenization = OpenAIServingTokenization(
-        engine,
-        model_config,
-        served_model_names,
-        lora_modules=args.lora_modules,
-        request_logger=request_logger,
-        chat_template=args.chat_template,
-    )
+    # openai_serving_embedding = OpenAIServingEmbedding(
+    #     engine,
+    #     model_config,
+    #     served_model_names,
+    #     request_logger=request_logger,
+    # )
+    # openai_serving_tokenization = OpenAIServingTokenization(
+    #     engine,
+    #     model_config,
+    #     served_model_names,
+    #     lora_modules=args.lora_modules,
+    #     request_logger=request_logger,
+    #     chat_template=args.chat_template,
+    # )
     app.root_path = args.root_path
 
     return app
