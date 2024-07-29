@@ -45,7 +45,7 @@ class OpenAIServingCompletion(OpenAIServing):
     def __init__(
         self,
         engine: AsyncLLMEngine,
-        model_config: ModelConfig,
+        # model_config: ModelConfig,
         served_model_names: List[str],
         *,
         lora_modules: Optional[List[LoRAModulePath]],
@@ -54,7 +54,7 @@ class OpenAIServingCompletion(OpenAIServing):
         return_tokens_as_token_ids: bool = False,
     ):
         super().__init__(engine=engine,
-                         model_config=model_config,
+                        #  model_config=model_config,
                          served_model_names=served_model_names,
                          lora_modules=lora_modules,
                          prompt_adapters=prompt_adapters,
@@ -96,18 +96,18 @@ class OpenAIServingCompletion(OpenAIServing):
             tokenizer = await self.engine.get_tokenizer(lora_request)
 
             sampling_params = request.to_sampling_params()
-            decoding_config = await self.engine.get_decoding_config()
-            guided_decoding_backend = request.guided_decoding_backend \
-                or decoding_config.guided_decoding_backend
-            guided_decode_logit_processor = (
-                await
-                get_guided_decoding_logits_processor(guided_decoding_backend,
-                                                     request, tokenizer))
-            if guided_decode_logit_processor is not None:
-                if sampling_params.logits_processors is None:
-                    sampling_params.logits_processors = []
-                sampling_params.logits_processors.append(
-                    guided_decode_logit_processor)
+            # decoding_config = await self.engine.get_decoding_config()
+            # guided_decoding_backend = request.guided_decoding_backend \
+            #     or decoding_config.guided_decoding_backend
+            # guided_decode_logit_processor = (
+            #     await
+            #     get_guided_decoding_logits_processor(guided_decoding_backend,
+            #                                          request, tokenizer))
+            # if guided_decode_logit_processor is not None:
+            #     if sampling_params.logits_processors is None:
+            #         sampling_params.logits_processors = []
+            #     sampling_params.logits_processors.append(
+            #         guided_decode_logit_processor)
 
             prompts = list(
                 self._tokenize_prompt_input_or_inputs(
@@ -128,13 +128,13 @@ class OpenAIServingCompletion(OpenAIServing):
                                  lora_request=lora_request,
                                  prompt_adapter_request=prompt_adapter_request)
 
-                is_tracing_enabled = await self.engine.is_tracing_enabled()
-                trace_headers = None
-                if is_tracing_enabled:
-                    trace_headers = extract_trace_headers(raw_request.headers)
-                if not is_tracing_enabled and contains_trace_headers(
-                        raw_request.headers):
-                    log_tracing_disabled_warning()
+                # is_tracing_enabled = await self.engine.is_tracing_enabled()
+                # trace_headers = None
+                # if is_tracing_enabled:
+                #     trace_headers = extract_trace_headers(raw_request.headers)
+                # if not is_tracing_enabled and contains_trace_headers(
+                #         raw_request.headers):
+                #     log_tracing_disabled_warning()
 
                 generator = self.engine.generate(
                     {"prompt_token_ids": prompt_inputs["prompt_token_ids"]},
@@ -142,7 +142,7 @@ class OpenAIServingCompletion(OpenAIServing):
                     request_id_item,
                     lora_request=lora_request,
                     prompt_adapter_request=prompt_adapter_request,
-                    trace_headers=trace_headers,
+                    # trace_headers=trace_headers,
                 )
 
                 generators.append(generator)
@@ -152,6 +152,7 @@ class OpenAIServingCompletion(OpenAIServing):
 
         result_generator: AsyncIterator[Tuple[
             int, RequestOutput]] = merge_async_iterators(*generators)
+        
 
         # Similar to the OpenAI API, when n != best_of, we do not stream the
         # results. In addition, we do not stream the results when use
@@ -189,7 +190,6 @@ class OpenAIServingCompletion(OpenAIServing):
                 # with the inputs token IDs
                 if final_res.prompt is None:
                     final_res.prompt = prompts[i]["prompt"]
-
             final_res_batch_checked = cast(List[RequestOutput],
                                            final_res_batch)
 
@@ -236,7 +236,6 @@ class OpenAIServingCompletion(OpenAIServing):
 
         try:
             async for prompt_idx, res in result_generator:
-
                 # Abort the request if the client disconnects.
                 if await raw_request.is_disconnected():
                     await self.engine.abort(f"{request_id}-{prompt_idx}")
@@ -286,7 +285,7 @@ class OpenAIServingCompletion(OpenAIServing):
 
                     previous_texts[i] = output.text
                     previous_num_tokens[i] = len(output.token_ids)
-                    finish_reason = output.finish_reason
+                    finish_reason = None if output.finish_reason == "" else output.finish_reason
                     stop_reason = output.stop_reason
 
                     chunk = CompletionStreamResponse(
