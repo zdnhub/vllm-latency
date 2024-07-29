@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from torch import nn
@@ -9,6 +10,7 @@ from vllm.model_executor.model_loader.loader import (BaseModelLoader,
                                                      get_model_loader)
 from vllm.model_executor.model_loader.utils import (
     get_architecture_class_name, get_model_architecture)
+from vllm.model_executor.model_optimizer.model_optimizer import optimizer
 
 
 def get_model(*, model_config: ModelConfig, load_config: LoadConfig,
@@ -18,13 +20,17 @@ def get_model(*, model_config: ModelConfig, load_config: LoadConfig,
               multimodal_config: Optional[MultiModalConfig],
               cache_config: CacheConfig) -> nn.Module:
     loader = get_model_loader(load_config)
-    return loader.load_model(model_config=model_config,
-                             device_config=device_config,
-                             lora_config=lora_config,
-                             multimodal_config=multimodal_config,
-                             parallel_config=parallel_config,
-                             scheduler_config=scheduler_config,
-                             cache_config=cache_config)
+    m = loader.load_model(model_config=model_config,
+                          device_config=device_config,
+                          lora_config=lora_config,
+                          multimodal_config=multimodal_config,
+                          parallel_config=parallel_config,
+                          scheduler_config=scheduler_config,
+                          cache_config=cache_config)
+    if "VLLM_DISABLE_MODEL_OPTIMIZER" in os.environ:
+        return m
+    else:
+        return optimizer(m)  #, fullgraph=True)
 
 
 __all__ = [

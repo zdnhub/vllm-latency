@@ -4,7 +4,7 @@ from typing import ClassVar, List, Optional, Sequence, Union, cast, overload
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from vllm.engine.arg_utils import EngineArgs
+from vllm.engine.arg_utils import EngineArgs, VLLM_DEFAULT_GPU_MEMORY_UTILIZATION
 from vllm.engine.llm_engine import LLMEngine
 from vllm.inputs import (PromptInputs, TextPrompt, TokensPrompt,
                          parse_and_batch_prompt)
@@ -84,7 +84,7 @@ class LLM:
         disable_custom_all_reduce: See ParallelConfig
         **kwargs: Arguments for :class:`~vllm.EngineArgs`. (See
             :ref:`engine_args`)
-    
+
     Note:
         This class is intended to be used for offline inference. For online
         serving, use the :class:`~vllm.AsyncLLMEngine` class instead.
@@ -115,7 +115,7 @@ class LLM:
         revision: Optional[str] = None,
         tokenizer_revision: Optional[str] = None,
         seed: int = 0,
-        gpu_memory_utilization: float = 0.9,
+        gpu_memory_utilization: float = VLLM_DEFAULT_GPU_MEMORY_UTILIZATION,
         swap_space: int = 4,
         cpu_offload_gb: float = 0,
         enforce_eager: bool = False,

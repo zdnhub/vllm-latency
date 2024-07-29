@@ -96,6 +96,12 @@ torch::Tensor gptq_marlin_gemm(torch::Tensor& a, torch::Tensor& b_q_weight,
                                bool is_k_full, bool has_zp,
                                bool use_fp32_reduce);
 
+torch::Tensor gptq_marlin_gemm_meta(
+    torch::Tensor& a, torch::Tensor& b_q_weight, torch::Tensor& b_scales,
+    torch::Tensor& b_zeros, torch::Tensor& g_idx, torch::Tensor& perm,
+    torch::Tensor& workspace, int64_t num_bits, int64_t size_m, int64_t size_n,
+    int64_t size_k, bool is_k_full, bool has_zp);
+
 torch::Tensor gptq_marlin_repack(torch::Tensor& b_q_weight, torch::Tensor& perm,
                                  int64_t size_k, int64_t size_n,
                                  int64_t num_bits);
@@ -117,6 +123,35 @@ void cutlass_scaled_mm(torch::Tensor& out, torch::Tensor const& a,
 
 #endif
 
+// These are kernels used by qqq
+// torch::Tensor qqq_gemm(
+//     torch::Tensor& a,
+//     torch::Tensor& b_q_weight,
+//     torch::Tensor& s1,
+//     torch::Tensor& s2,
+//     torch::Tensor& s3,
+//     torch::Tensor& workspace,
+//     int64_t size_m,
+//     int64_t size_n,
+//     int64_t size_k);
+
+void rms_norm_quant(torch::Tensor& out, torch::Tensor const& input,
+                    torch::Tensor& tmp, torch::Tensor const& weight,
+                    torch::Tensor& scale, double const epsilon);
+
+void add_residual_rms_norm_quant(torch::Tensor& out, torch::Tensor const& input,
+                                 torch::Tensor& residual, torch::Tensor& tmp,
+                                 torch::Tensor const& weight,
+                                 torch::Tensor& scale, double const epsilon);
+
+void silu_and_mul_quant(torch::Tensor& out, torch::Tensor const& input,
+                        torch::Tensor& scale, torch::Tensor& tmp);
+
+// void quant(
+//   torch::Tensor& out,
+//   torch::Tensor& input,
+//   torch::Tensor& scale);
+
 void static_scaled_int8_quant(torch::Tensor& out, torch::Tensor const& input,
                               torch::Tensor const& scale);
 
@@ -130,6 +165,11 @@ torch::Tensor gptq_gemm(torch::Tensor a, torch::Tensor b_q_weight,
                         torch::Tensor b_gptq_qzeros,
                         torch::Tensor b_gptq_scales, torch::Tensor b_g_idx,
                         bool use_exllama, int64_t bit);
+
+torch::Tensor gptq_gemm_meta(torch::Tensor a, torch::Tensor b_q_weight,
+                             torch::Tensor b_gptq_qzeros,
+                             torch::Tensor b_gptq_scales, torch::Tensor b_g_idx,
+                             bool use_exllama, int64_t bit);
 
 void gptq_shuffle(torch::Tensor q_weight, torch::Tensor q_perm, int64_t bit);
 

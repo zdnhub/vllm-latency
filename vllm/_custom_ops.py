@@ -17,10 +17,10 @@ with contextlib.suppress(ImportError):
     import vllm._moe_C
 
 with contextlib.suppress(ImportError):
-    # ruff: noqa: F401
-    import vllm._punica_C
+    import vllm._punica_C  # noqa: F401
 
 
+# Note: don't use this in code that will be compiled
 def is_custom_op_supported(op_name: str) -> bool:
     op, overloads = torch._C._jit_get_operation(op_name)
     return op is not None
@@ -166,6 +166,25 @@ def fused_add_rms_norm(input: torch.Tensor, residual: torch.Tensor,
     torch.ops._C.fused_add_rms_norm(input, residual, weight, epsilon)
 
 
+def rms_norm_quant(out: torch.Tensor, input: torch.Tensor, tmp: torch.Tensor,
+                   weight: torch.Tensor, scale: torch.Tensor,
+                   epsilon: float) -> None:
+    torch.ops._C.rms_norm_quant(out, input, tmp, weight, scale, epsilon)
+
+
+def add_residual_rms_norm_quant(out: torch.Tensor, input: torch.Tensor,
+                                residual: torch.Tensor, tmp: torch.Tensor,
+                                weight: torch.Tensor, scale: torch.Tensor,
+                                epsilon: float) -> None:
+    torch.ops._C.add_residual_rms_norm_quant(out, input, residual, tmp, weight,
+                                             scale, epsilon)
+
+
+def silu_and_mul_quant(out: torch.Tensor, input: torch.Tensor,
+                       scale: torch.Tensor, tmp: torch.Tensor) -> None:
+    torch.ops._C.silu_and_mul_quant(out, input, scale, tmp)
+
+
 def advance_step(num_seqs: int, num_queries: int, block_size: int,
                  input_tokens: torch.Tensor, sampled_token_ids: torch.Tensor,
                  input_positions: torch.Tensor, seq_lens: torch.Tensor,
@@ -244,8 +263,8 @@ def cutlass_scaled_mm(a: torch.Tensor,
     assert (b.shape[0] % 16 == 0 and b.shape[1] % 16 == 0)
     assert (out_dtype is torch.bfloat16 or out_dtype is torch.float16)
 
-    m = a.shape[0]
-    n = b.shape[1]
+    m = a.size(0)
+    n = b.size(1)
     out = torch.empty((m, n), dtype=out_dtype, device=a.device)
 
     torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)

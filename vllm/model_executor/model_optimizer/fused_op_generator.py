@@ -1,0 +1,35 @@
+###############################################################################
+#
+# Fused operation generator base class.
+#
+###############################################################################
+
+from abc import ABC, abstractmethod
+from collections import OrderedDict
+from typing import Callable, Dict, List
+
+import torch
+
+
+class FusionFail(Exception):
+    """
+    An exception used to indicate a failure in the fusion or fused op generation
+    process. Should be recoverable, i.e. can fall back to the non-fused version
+    of graph.
+    """
+    pass
+
+
+class FusedOpGenerator(ABC):
+    """
+    The FusedOpGenerator is a class that is responsible for generating a fused
+    operation for sequences of gx graph nodes.
+    """
+
+    @abstractmethod
+    def make_fused_op(
+            self, op_name: str, inputs: OrderedDict[str,
+                                                    torch.fx.node.Argument],
+            outputs: List[torch.fx.Node], nodes: List[torch.fx.Node],
+            kwargs: Dict[str, Dict[str, torch.fx.node.Argument]]) -> Callable:
+        raise FusionFail("no generator")
