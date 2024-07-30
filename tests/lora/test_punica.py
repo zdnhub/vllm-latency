@@ -20,7 +20,7 @@ def _lora_ref_impl(
     x: torch.Tensor,
     wa_T_all: torch.Tensor,
     wb_T_all: torch.Tensor,
-    indicies: torch.LongTensor,
+    indices: torch.LongTensor,
     layer_idx: int,
     scale: float,
 ):
@@ -31,7 +31,7 @@ def _lora_ref_impl(
     )
     bs = x.shape[0]
     s = torch.tensor(scale, dtype=torch.float32, device=x.device)
-    for i, lora_idx in zip(range(bs), indicies.cpu().tolist()):
+    for i, lora_idx in zip(range(bs), indices.cpu().tolist()):
         xi = x[i].unsqueeze(0).to(torch.float32)
         wa = wa_T_all[lora_idx, layer_idx].transpose(-1, -2).to(torch.float32)
         if wb_T_all is not None:

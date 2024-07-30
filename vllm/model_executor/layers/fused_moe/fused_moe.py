@@ -376,17 +376,17 @@ def fused_topk(
                            topk,
                            dtype=torch.int32,
                            device=hidden_states.device)
-    token_expert_indicies = torch.empty(M,
+    token_expert_indices = torch.empty(M,
                                         topk,
                                         dtype=torch.int32,
                                         device=hidden_states.device)
     ops.topk_softmax(
         topk_weights,
         topk_ids,
-        token_expert_indicies,
+        token_expert_indices,
         gating_output.float(),  # TODO(woosuk): Optimize this.
     )
-    del token_expert_indicies  # Not used. Will be used in the future.
+    del token_expert_indices  # Not used. Will be used in the future.
 
     if renormalize:
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
