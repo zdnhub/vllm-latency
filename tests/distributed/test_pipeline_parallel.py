@@ -83,7 +83,8 @@ def test_compare_tp(TP_SIZE, PP_SIZE, EAGER_MODE, CHUNKED_PREFILL, MODEL_NAME,
         pp_env = {
             "VLLM_USE_RAY_COMPILED_DAG": "1",
             "VLLM_USE_RAY_SPMD_WORKER": "1",
-            "VLLM_USE_RAY_COMPILED_DAG_NCCL": str(int(USE_RAY_ADAG_NCCL)),
+            "VLLM_USE_RAY_COMPILED_DAG_NCCL_CHANNEL":
+            str(int(USE_RAY_ADAG_NCCL)),
         }
 
     compare_two_settings(MODEL_NAME, pp_args, tp_args, pp_env)

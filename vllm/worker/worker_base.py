@@ -283,8 +283,9 @@ class LocalOrDistributedWorkerBase(WorkerBase):
         return output
 
     def _execute_model_spmd(
-        self, execute_model_req: ExecuteModelRequest,
-        intermediate_tensors: Optional[IntermediateTensors]
+        self,
+        execute_model_req: ExecuteModelRequest,
+        intermediate_tensors: Optional[IntermediateTensors] = None
     ) -> Optional[List[SamplerOutput]]:
         """
         Execute model in Single Program Multiple Data (SPMD) fashion.

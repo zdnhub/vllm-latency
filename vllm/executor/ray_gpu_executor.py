@@ -106,7 +106,9 @@ class RayGPUExecutor(DistributedGPUExecutor):
         # The remaining workers are the actual ray actors.
         self.workers: List[RayWorkerWrapper] = []
 
-        # Used in ray compiled DAG: indexed first by PP rank, and then TP rank.
+        # Used in ray compiled DAG: indexed first by PP rank,
+        # and then TP rank. In other words, the inner list is
+        # the TP group of workers for a PP rank.
         self.pp_tp_workers: List[List[RayWorkerWrapper]] = []
 
         if self.parallel_config.ray_workers_use_nsight:
@@ -165,9 +167,21 @@ class RayGPUExecutor(DistributedGPUExecutor):
             ip_counts[ip] = ip_counts.get(ip, 0) + 1
 
         def sort_by_driver_then_worker_ip(worker):
+            """
+            Sort the workers based on 3 properties:
+            1. If the worker is on the same node as the driver (vllm engine),
+                it should be placed first.
+            2. Then, if the worker is on a node with fewer workers, it should
+                be placed first.
+            3. Finally, if the work is on a node with smaller IP address, it
+                should be placed first.
+            """
             ip = ray.get(worker.get_node_ip.remote())
             return (ip != driver_ip, ip_counts[ip], ip)
 
+        # After sorting, the workers on the same node will be
+        # close to each other, and the workers on the driver
+        # node will be placed first.
         self.workers = sorted(self.workers, key=sort_by_driver_then_worker_ip)
 
         # Get the set of GPU IDs used on each node.
@@ -405,43 +419,40 @@ class RayGPUExecutor(DistributedGPUExecutor):
         from ray.dag import InputNode, MultiOutputNode
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-        logger.info("VLLM_USE_RAY_COMPILED_DAG_NCCL = %s",
-                    envs.VLLM_USE_RAY_COMPILED_DAG_NCCL)
+        logger.info("VLLM_USE_RAY_COMPILED_DAG_NCCL_CHANNEL = %s",
+                    envs.VLLM_USE_RAY_COMPILED_DAG_NCCL_CHANNEL)
         with InputNode() as input_data:
             # Example DAG: PP=2, TP=4
             # (ExecuteModelReq, None) -> 0 -> (ExecuteModelReq, IntermediateOutput) -> 4 -> SamplerOutput   # noqa: E501
             #                         -> 1 -> (ExecuteModelReq, IntermediateOutput) -> 5 -> SamplerOutput   # noqa: E501
             #                         -> 2 -> (ExecuteModelReq, IntermediateOutput) -> 6 -> SamplerOutput   # noqa: E501
             #                         -> 3 -> (ExecuteModelReq, IntermediateOutput) -> 7 -> SamplerOutput   # noqa: E501
-            # All workers in the first TP group will take in the
 
+            # All workers in the first TP group will take in the
             # ExecuteModelRequest as input.
             outputs = [input_data for _ in self.pp_tp_workers[0]]
             for pp_rank, tp_group in enumerate(self.pp_tp_workers):
-                # Each PP worker takes in the output of the previous PP worker.
+                # Each PP worker takes in the output of the previous PP worker,
+                # and the TP group executes in SPMD fashion.
                 outputs = [
                     worker.execute_model_spmd.
                     bind(  # type: ignore[attr-defined]
                         outputs[i]) for i, worker in enumerate(tp_group)
                 ]
 
-                # Specify how intermediate tensors should be passed between
-                # workers.
-                if pp_rank < len(self.pp_tp_workers) - 1:
-                    if envs.VLLM_USE_RAY_COMPILED_DAG_NCCL:
-                        # Transfer the tensors through NCCL.
-                        outputs = [
-                            output.with_type_hint(
-                                TorchTensorType(transport="nccl"))
-                            for output in outputs
-                        ]
-                    else:
-                        # Just transfer the tensors through Ray's shared memory
-                        # store.
-                        outputs = [
-                            output.with_type_hint(TorchTensorType())
-                            for output in outputs
-                        ]
+                last_pp_rank = len(self.pp_tp_workers) - 1
+                if pp_rank < last_pp_rank:
+                    # Specify how intermediate tensors should be passed
+                    # between pp stages, no need to specify for the last
+                    # pp stage.
+                    transport = "nccl" \
+                        if envs.VLLM_USE_RAY_COMPILED_DAG_NCCL_CHANNEL \
+                        else "auto"
+                    outputs = [
+                        output.with_type_hint(
+                            TorchTensorType(transport=transport))
+                        for output in outputs
+                    ]
 
             forward_dag = MultiOutputNode(outputs)
 
