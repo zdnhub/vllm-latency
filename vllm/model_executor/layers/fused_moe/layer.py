@@ -108,11 +108,33 @@ class UnquantizedFusedMoEMethod(FusedMoEMethodBase, CustomOp):
                     router_logits: torch.Tensor, top_k: int, renormalize: bool,
                     use_grouped_topk: bool, num_expert_group: Optional[int],
                     topk_group: Optional[int]):
+        assert not use_grouped_topk, 'use_grouped_topk must be False on HPU'
+        assert num_expert_group is None, ('num_expert_group is '
+                                          'not supported on HPU')
+        assert topk_group is None, 'topk_group is not supported on HPU'
         return static_fused_moe(x, w1, w2, router_logits, top_k)
 
     def forward_cpu(self, *args, **kwargs):
         raise NotImplementedError(
             "The CPU backend currently does not support MoE.")
+
+    def forward_tpu(
+        self,
+        x: torch.Tensor,
+        w1: torch.Tensor,
+        w2: torch.Tensor,
+        router_logits: torch.Tensor,
+        top_k: int,
+        renormalize: bool,
+        use_grouped_topk: bool,
+        num_expert_group: Optional[int],
+        topk_group: Optional[int],
+    ) -> torch.Tensor:
+        from vllm.model_executor.layers.fused_moe.moe_pallas import fused_moe
+        assert not use_grouped_topk
+        assert num_expert_group is None
+        assert topk_group is None
+        return fused_moe(x, w1, w2, router_logits, top_k, renormalize)
 
 
 class FusedMoE(torch.nn.Module):
@@ -150,6 +172,7 @@ class FusedMoE(torch.nn.Module):
         topk_group: Optional[int] = None,
         quant_config: Optional[QuantizationConfig] = None,
         tp_size: Optional[int] = None,
+        prefix: str = "",
     ):
         super().__init__()
 
@@ -173,7 +196,7 @@ class FusedMoE(torch.nn.Module):
             self.quant_method: Optional[QuantizeMethodBase] = (
                 UnquantizedFusedMoEMethod())
         else:
-            self.quant_method = quant_config.get_quant_method(self)
+            self.quant_method = quant_config.get_quant_method(self, prefix)
         assert self.quant_method is not None
 
         self.quant_method.create_weights(
