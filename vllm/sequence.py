@@ -101,6 +101,16 @@ class RequestMetrics:
     finished_time: Optional[float] = None
 
 
+class SequenceDataDelta:
+
+    def __init__(self, new_output_token_ids, new_cumulative_logprob,
+                 new_num_computed_tokens, new_stage):
+        self.new_output_token_ids = new_output_token_ids
+        self.new_cumulative_logprob = new_cumulative_logprob
+        self.new_num_computed_tokens = new_num_computed_tokens
+        self.new_stage = new_stage
+
+
 class SequenceData:
     """Data associated with a sequence.
 
@@ -129,6 +139,9 @@ class SequenceData:
         # The number of tokens that are computed (that run against the model).
         self._num_computed_tokens = 0
         self._stage: SequenceStage = SequenceStage.PREFILL
+
+        # New output tokens appended. Used to get delta input.
+        self._new_appended_tokens: List[int] = []
 
         self._update_cached_all_tokens()
 
@@ -165,6 +178,7 @@ class SequenceData:
 
     def append_token_id(self, token_id: int, logprob: float) -> None:
         self._output_token_ids.append(token_id)
+        self._new_appended_tokens.append(token_id)
         self._cached_all_token_ids.append(token_id)
         self.cumulative_logprob += logprob
 
@@ -230,6 +244,21 @@ class SequenceData:
     def get_output_token_ids(self) -> Tuple[int, ...]:
         return self.output_token_ids
 
+    def get_delta(self) -> SequenceDataDelta:
+        delta = SequenceDataDelta(self._new_appended_tokens,
+                                  self.cumulative_logprob,
+                                  self.get_num_computed_tokens(), self.stage)
+        # Reset delta state.
+        self._new_appended_tokens = []
+        return delta
+
+    def apply_delta(self, delta: SequenceDataDelta):
+        self._num_computed_tokens = delta.new_num_computed_tokens
+        self.cumulative_logprob = delta.new_cumulative_logprob
+        self._stage = delta.new_stage
+        self._output_token_ids.extend(delta.new_output_token_ids)
+        self._cached_all_token_ids.extend(delta.new_output_token_ids)
+
     @property
     def stage(self) -> SequenceStage:
         return self._stage
@@ -238,7 +267,8 @@ class SequenceData:
         return (f"SequenceData("
                 f"prompt_token_ids={self._prompt_token_ids}, "
                 f"output_token_ids={self._output_token_ids}, "
-                f"cumulative_logprob={self.cumulative_logprob})")
+                f"cumulative_logprob={self.cumulative_logprob}, "
+                f"get_num_computed_tokens={self.get_num_computed_tokens()}")
 
 
 class Sequence:
@@ -630,6 +660,24 @@ class SequenceGroup:
                 f"num_seqs={len(self.seqs_dict)})")
 
 
+class SequenceGroupMetadataDecode:
+    """Delta sequence group metadata."""
+
+    def __init__(
+        self,
+        seq_data_delta: Dict[int, SequenceDataDelta],
+        request_id: str,
+        block_tables: Dict[int, List[int]],
+        do_sample: bool = True,
+        token_chunk_size: Optional[int] = None,
+    ) -> None:
+        self.seq_data_delta = seq_data_delta
+        self.request_id = request_id
+        self.block_tables = block_tables
+        self.token_chunk_size = token_chunk_size
+        self.do_sample = do_sample
+
+
 class SequenceGroupMetadata:
     """Metadata for a sequence group. Used to create `AttentionMetadata`.
 
@@ -727,6 +775,16 @@ class SequenceGroupMetadata:
         """Return the number of tokens to be processed (chunk size)."""
         assert self._token_chunk_size is not None
         return self._token_chunk_size
+
+    def apply_delta(
+            self, sequence_group_metadata_decode: SequenceGroupMetadataDecode):
+        for id, delta in sequence_group_metadata_decode.seq_data_delta.items():
+            self.seq_data[id].apply_delta(delta)
+        self.request_id = sequence_group_metadata_decode.request_id
+        self.block_tables = sequence_group_metadata_decode.block_tables
+        self._token_chunk_size = sequence_group_metadata_decode.token_chunk_size
+        self.do_sample = sequence_group_metadata_decode.do_sample
+        self.is_prompt = False
 
 
 class SequenceOutput:

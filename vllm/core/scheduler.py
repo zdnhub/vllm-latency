@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple, Union
 
+import vllm.envs as envs
 from vllm.config import CacheConfig, LoRAConfig, SchedulerConfig
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.core.policy import Policy, PolicyFactory
@@ -13,7 +14,8 @@ from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
-                           SequenceGroupMetadata, SequenceStatus)
+                           SequenceGroupMetadata, SequenceGroupMetadataDecode,
+                           SequenceStatus)
 
 logger = init_logger(__name__)
 
@@ -1018,26 +1020,40 @@ class Scheduler:
             # It assumes the scheduled_seq_groups is ordered by
             # prefill < decoding.
             is_prompt = seq_group.is_prefill()
-            seq_group_metadata = SequenceGroupMetadata(
-                request_id=seq_group.request_id,
-                is_prompt=is_prompt,
-                seq_data=seq_data,
-                sampling_params=seq_group.sampling_params,
-                block_tables=block_tables,
-                do_sample=do_sample,
-                pooling_params=seq_group.pooling_params,
-                token_chunk_size=token_chunk_size,
-                lora_request=seq_group.lora_request,
-                computed_block_nums=common_computed_block_nums,
-                state=seq_group.state,
-                # `multi_modal_data` will only be present for the 1st comm
-                # between engine and worker.
-                # the subsequent comms can still use delta, but
-                # `multi_modal_data` will be None.
-                multi_modal_data=seq_group.multi_modal_data
-                if scheduler_outputs.num_prefill_groups > 0 else None,
-                prompt_adapter_request=seq_group.prompt_adapter_request,
-            )
+            if is_prompt or not envs.VLLM_USE_RAY_SPMD_WORKER:
+                seq_group_metadata = SequenceGroupMetadata(
+                    request_id=seq_group.request_id,
+                    is_prompt=is_prompt,
+                    seq_data=seq_data,
+                    sampling_params=seq_group.sampling_params,
+                    block_tables=block_tables,
+                    do_sample=do_sample,
+                    pooling_params=seq_group.pooling_params,
+                    token_chunk_size=token_chunk_size,
+                    lora_request=seq_group.lora_request,
+                    computed_block_nums=common_computed_block_nums,
+                    state=seq_group.state,
+                    # `multi_modal_data` will only be present for the 1st comm
+                    # between engine and worker.
+                    # the subsequent comms can still use delta, but
+                    # `multi_modal_data` will be None.
+                    multi_modal_data=seq_group.multi_modal_data
+                    if scheduler_outputs.num_prefill_groups > 0 else None,
+                    prompt_adapter_request=seq_group.prompt_adapter_request,
+                )
+            else:
+                # Delta is used only for spmd workers.
+                seq_data_delta = {}
+                for id, data in seq_data.items():
+                    seq_data_delta[id] = data.get_delta()
+
+                seq_group_metadata = SequenceGroupMetadataDecode(
+                    seq_data_delta,
+                    seq_group.request_id,
+                    block_tables,
+                    do_sample=do_sample,
+                    token_chunk_size=token_chunk_size,
+                )
             seq_group_metadata_list.append(seq_group_metadata)
 
         # Now that the batch has been created, we can assume all blocks in the
