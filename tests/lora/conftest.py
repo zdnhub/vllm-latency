@@ -168,6 +168,10 @@ def sql_lora_huggingface_id():
 def sql_lora_files(sql_lora_huggingface_id):
     return snapshot_download(repo_id=sql_lora_huggingface_id)
 
+@pytest.fixture(scope="session")
+def lora_bias_files():
+    return snapshot_download(repo_id="followumesh/granite-3b-lora8-bias")
+
 
 @pytest.fixture(scope="session")
 def mixtral_lora_files():
