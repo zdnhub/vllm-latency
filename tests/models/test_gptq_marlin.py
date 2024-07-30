@@ -9,6 +9,7 @@ up to 3 times to see if we pass.
 Run `pytest tests/models/test_gptq_marlin.py`.
 """
 import os
+from typing import Optional
 
 import pytest
 
@@ -18,7 +19,6 @@ from vllm.model_executor.layers.rotary_embedding import _ROPE_DICT
 from .utils import check_logprobs_close
 
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
-
 MAX_MODEL_LEN = 1024
 
 MODELS = [
@@ -46,22 +46,18 @@ MODELS = [
 ]
 
 
-@pytest.mark.flaky(reruns=3)
-@pytest.mark.skipif(not is_quant_method_supported("gptq_marlin"),
-                    reason="gptq_marlin is not supported on this GPU type.")
-@pytest.mark.parametrize("model", MODELS)
-@pytest.mark.parametrize("dtype", ["half", "bfloat16"])
-@pytest.mark.parametrize("max_tokens", [32])
-@pytest.mark.parametrize("num_logprobs", [5])
-def test_models(
+def run_test(
     vllm_runner,
     example_prompts,
     model,
     dtype: str,
     max_tokens: int,
     num_logprobs: int,
+    tensor_parallel_size: int,
+    distributed_executor_backend: Optional[str] = None,
 ) -> None:
     model_name, revision = model
+    distributed_executor_backend = os.getenv("DISTRIBUTED_EXECUTOR_BACKEND")
 
     # Run marlin.
     with vllm_runner(model_name=model_name,
@@ -69,7 +65,9 @@ def test_models(
                      dtype=dtype,
                      quantization="marlin",
                      max_model_len=MAX_MODEL_LEN,
-                     tensor_parallel_size=1) as gptq_marlin_model:
+                     tensor_parallel_size=tensor_parallel_size,
+                     distributed_executor_backend=distributed_executor_backend
+                     ) as gptq_marlin_model:
 
         gptq_marlin_outputs = gptq_marlin_model.generate_greedy_logprobs(
             example_prompts[:-1], max_tokens, num_logprobs)
@@ -84,7 +82,9 @@ def test_models(
                      dtype="half",
                      quantization="gptq",
                      max_model_len=MAX_MODEL_LEN,
-                     tensor_parallel_size=1) as gptq_model:
+                     tensor_parallel_size=tensor_parallel_size,
+                     distributed_executor_backend=distributed_executor_backend
+                     ) as gptq_model:
         gptq_outputs = gptq_model.generate_greedy_logprobs(
             example_prompts[:-1], max_tokens, num_logprobs)
 
@@ -93,4 +93,30 @@ def test_models(
         outputs_1_lst=gptq_marlin_outputs,
         name_0="gptq",
         name_1="gptq_marlin",
+    )
+
+
+@pytest.mark.flaky(reruns=3)
+@pytest.mark.parametrize("model", MODELS)
+@pytest.mark.parametrize("dtype", ["half", "bfloat16"])
+@pytest.mark.parametrize("max_tokens", [32])
+@pytest.mark.parametrize("num_logprobs", [5])
+def test_models(
+    vllm_runner,
+    example_prompts,
+    model,
+    dtype: str,
+    max_tokens: int,
+    num_logprobs: int,
+) -> None:
+    if not is_quant_method_supported("gptq_marlin"):
+        pytest.skip("gptq_marlin is not supported on this GPU type.")
+    run_test(
+        vllm_runner,
+        example_prompts,
+        model,
+        dtype,
+        max_tokens,
+        num_logprobs,
+        tensor_parallel_size=1,
     )
