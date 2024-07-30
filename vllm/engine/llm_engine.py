@@ -354,6 +354,12 @@ class LLMEngine:
                 ),
             ))
 
+        # Async output processing pointers
+        # TO DO: move it to asyncllmengine
+        self.previous_output = None
+        self.previous_scheduler_outputs = None
+        self.previous_seq_group_metadata_list = None
+
     def _initialize_kv_caches(self) -> None:
         """Initialize the KV cache in the worker(s).
 
@@ -818,8 +824,8 @@ class LLMEngine:
                 scheduled_seq_groups, output_by_sequence_group,
                 seq_group_metadata_list):
             seq_group = scheduled_seq_group.seq_group
-            seq_group.update_num_computed_tokens(
-                scheduled_seq_group.token_chunk_size)
+            # seq_group.update_num_computed_tokens(
+            #     scheduled_seq_group.token_chunk_size)
             if self.model_config.embedding_mode:
                 self._process_sequence_group_outputs(seq_group, outputs)
                 continue
@@ -828,9 +834,9 @@ class LLMEngine:
             if seq_group_meta.do_sample:
                 self.output_processor.process_outputs(seq_group, outputs)
 
-        # Free the finished sequence groups.
-        for scheduler in self.scheduler:
-            scheduler.free_finished_seq_groups()
+        # # Free the finished sequence groups.
+        # for scheduler in self.scheduler:
+        #     scheduler.free_finished_seq_groups()
 
         # Create the outputs.
         request_outputs: List[Union[RequestOutput,

@@ -24,6 +24,7 @@ from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
 from vllm.usage.usage_lib import UsageContext
+from vllm.sequence import SequenceGroupMetadata
 
 logger = init_logger(__name__)
 ENGINE_ITERATION_TIMEOUT_S = envs.VLLM_ENGINE_ITERATION_TIMEOUT_S
@@ -222,6 +223,29 @@ class RequestTracker:
 class _AsyncLLMEngine(LLMEngine):
     """Extension of LLMEngine to add async methods."""
 
+    def _advance_to_next_step(
+        self,
+        output: List[SamplerOutput],
+        seq_group_metadata_list: List[SequenceGroupMetadata]) -> None:
+        """Given model output from a single run, append the tokens to the
+        sequences. This is normally done outside of the worker, but it is
+        required if the worker is to perform async forward passes to next step.
+        """
+        for seq_group_metadata, sequence_group_outputs in zip(
+                seq_group_metadata_list, output):
+            seq_group_metadata.is_prompt = False
+
+            for seq_output in sequence_group_outputs.samples:
+                # NOTE: Beam search is not supported, so we can assume that
+                # parent_seq_id == seq_id.
+                seq = seq_group_metadata.seq_data[seq_output.parent_seq_id]
+
+                token_id = seq_output.output_token
+                token_logprob = seq_output.logprobs[token_id]
+
+                seq.update_num_computed_tokens(seq_group_metadata.token_chunk_size)
+                seq.append_token_id(token_id, token_logprob.logprob)
+
     async def step_async(
         self, virtual_engine: int
     ) -> List[Union[RequestOutput, EmbeddingRequestOutput]]:
@@ -234,6 +258,12 @@ class _AsyncLLMEngine(LLMEngine):
         and updates the scheduler with the model outputs. Finally, it decodes
         the sequences and returns the newly generated results.
         """
+        request_outputs = None
+        if (self.previous_output) and (len(self.previous_output) > 0):
+            request_outputs = self._process_model_outputs(
+                self.previous_output, self.previous_scheduler_outputs.scheduled_seq_groups,
+                self.previous_scheduler_outputs.ignored_seq_groups, self.previous_seq_group_metadata_list)
+
         seq_group_metadata_list, scheduler_outputs = self.scheduler[
             virtual_engine].schedule()
 
@@ -254,11 +284,17 @@ class _AsyncLLMEngine(LLMEngine):
                 execute_model_req)
         else:
             output = []
+        self.previous_output = output
+        self.previous_scheduler_outputs = scheduler_outputs
+        self.previous_seq_group_metadata_list = seq_group_metadata_list
 
-        request_outputs = self._process_model_outputs(
-            output, scheduler_outputs.scheduled_seq_groups,
-            scheduler_outputs.ignored_seq_groups, seq_group_metadata_list)
+        # HACK: only supports single step
+        if len(output) > 0:
+            self._advance_to_next_step(output[0], seq_group_metadata_list)
 
+        # request_outputs = self._process_model_outputs(
+        #         output, scheduler_outputs.scheduled_seq_groups,
+        #         scheduler_outputs.ignored_seq_groups, seq_group_metadata_list)
         # Log stats.
         self.do_log_stats(scheduler_outputs, output)
 
@@ -582,6 +618,10 @@ class AsyncLLMEngine:
             request_outputs = await self.engine.step.remote()  # type: ignore
         else:
             request_outputs = await self.engine.step_async(virtual_engine)
+
+        # HACK: no output returned in first step
+        if not request_outputs:
+            return False
 
         # Put the outputs into the corresponding streams.
         finished = True
