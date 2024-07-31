@@ -292,8 +292,8 @@ class LLM:
         """
         if self.llm_engine.model_config.embedding_mode:
             raise ValueError(
-                "LLM.generate() is only supported for generation models "
-                "(XForCausalLM).")
+                "LLM.generate() is only supported for (conditional) generation "
+                "models (XForCausalLM, XForConditionalGeneration).")
 
         if prompt_token_ids is not None:
             inputs = self._convert_v1_inputs(
@@ -589,3 +589,9 @@ class LLM:
         # This is necessary because some requests may be finished earlier than
         # its previous requests.
         return sorted(outputs, key=lambda x: int(x.request_id))
+
+    def _is_encoder_decoder_model(self):
+        return self.llm_engine.is_encoder_decoder_model()
+
+    def _is_embedding_model(self):
+        return self.llm_engine.is_embedding_model()

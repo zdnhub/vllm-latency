@@ -1,31 +1,19 @@
 """Kernel test utils"""
 
 import itertools
+import os
 import random
+from contextlib import contextmanager
 from numbers import Number
-from typing import Any, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Generator, List, NamedTuple, Optional, Tuple, Union
 
 import pytest
 import torch
 
-from vllm.attention.backends.abstract import (AttentionBackend,
-                                              AttentionMetadata, AttentionType)
+from vllm.attention import AttentionBackend, AttentionMetadata, AttentionType
 from vllm.attention.backends.xformers import XFormersBackend
-from vllm.utils import make_tensor_with_pad
-
-# String name of register which may be set in order to
-# force auto-selection of attention backend by Attention
-# wrapper
-STR_BACKEND_ENV_VAR: str = "VLLM_ATTENTION_BACKEND"
-
-# Possible string values of STR_BACKEND_ENV_VAR
-# register, corresponding to possible backends
-STR_FLASHINFER_ATTN_VAL: str = "FLASHINFER"
-STR_TORCH_SDPA_ATTN_VAL: str = "TORCH_SDPA"
-STR_ROCM_FLASH_ATTN_VAL: str = "ROCM_FLASH"
-STR_XFORMERS_ATTN_VAL: str = "XFORMERS"
-STR_FLASH_ATTN_VAL: str = "FLASH_ATTN"
-STR_INVALID_VAL: str = "INVALID"
+from vllm.utils import (STR_BACKEND_ENV_VAR, STR_XFORMERS_ATTN_VAL,
+                        make_tensor_with_pad)
 
 
 class QKVInputs(NamedTuple):
@@ -219,6 +207,46 @@ def override_backend_env_variable(mpatch: pytest.MonkeyPatch,
     * backend_name: attention backend name to force
     '''
     mpatch.setenv(STR_BACKEND_ENV_VAR, backend_name)
+
+
+@contextmanager
+def override_backend_env_var_context_manager(
+    backend_name: str, ) -> Generator[None, None, None]:
+    '''
+    Override the environment variable indicating the vLLM backend temporarily,
+    in a context where pytest monkeypatch is not available (i.e. *outside*
+    the context of a unit test, such as in an example code file.)
+
+    Accomplish this using a custom context manager.
+
+    Arguments:
+
+    * backend_name: attention backend name to force
+
+    Returns:
+
+    * Generator
+    '''
+
+    key = STR_BACKEND_ENV_VAR
+
+    # Save the current state of the environment variable (if it exists)
+    original_value = os.environ.get(key, None)
+
+    # Set the new value of the environment variable
+    os.environ[key] = backend_name
+
+    # Yield control back to the enclosed code block
+    try:
+        yield
+    finally:
+        # Revert the environment variable to its original state
+        if original_value is None:
+            os.environ.pop(
+                key, None)  # Remove the variable if it wasn't originally set
+        else:
+            os.environ[
+                key] = original_value  # Revert back to the original value
 
 
 def ref_masked_attention(query: torch.Tensor,
