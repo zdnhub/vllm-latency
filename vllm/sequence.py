@@ -7,10 +7,11 @@ from array import array
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import (TYPE_CHECKING, Dict, List, Mapping, Optional, Set, Tuple,
-                    Union)
+                    Union, Any)
 
 import torch
 
+import msgspec
 from vllm.lora.request import LoRARequest
 from vllm.pooling_params import PoolingParams
 from vllm.prompt_adapter.request import PromptAdapterRequest
@@ -101,7 +102,14 @@ class RequestMetrics:
     finished_time: Optional[float] = None
 
 
-class SequenceData:
+class SequenceDataDelta(msgspec.Struct, array_like=True, omit_defaults=True):
+    new_output_token_ids: List[int]
+    new_cumulative_logprob: float
+    new_num_computed_tokens: int
+    new_stage: SequenceStage
+
+
+class SequenceData(msgspec.Struct, omit_defaults=True):
     """Data associated with a sequence.
 
     Args:
@@ -114,22 +122,28 @@ class SequenceData:
         output_token_ids: The token IDs of the output.
         cumulative_logprob: The cumulative log probability of the output.
     """
+    _prompt_token_ids: array
+    _output_token_ids: Optional[array] = None
 
-    def __init__(
+    ### The below fields should not be passed as an argument ###
+    cumulative_logprob: float = 0.0
+    _prompt_token_ids_tuple: Optional[Tuple[int, ...]] = None
+    # The number of tokens that are computed (that run against the model).
+    _num_computed_tokens: int = 0
+    _stage: SequenceStage = SequenceStage.PREFILL
+    # New output tokens appended. Used to get delta input.
+    _new_appended_tokens: List[int] = msgspec.field(default_factory=list)
+    _cached_all_token_ids: List[int] = msgspec.field(default_factory=list)
+
+    def __post_init__(
         self,
-        prompt_token_ids: List[int],
-        output_token_ids: Optional[List[int]] = None,
     ) -> None:
-        self._prompt_token_ids = array('l', prompt_token_ids)
-        self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(prompt_token_ids)
-        self._output_token_ids = array(
-            'l', output_token_ids if output_token_ids is not None else [])
-
-        self.cumulative_logprob = 0.0
-        # The number of tokens that are computed (that run against the model).
-        self._num_computed_tokens = 0
-        self._stage: SequenceStage = SequenceStage.PREFILL
-
+        if not isinstance(self._prompt_token_ids, array):
+            self._prompt_token_ids = array('l', self._prompt_token_ids)
+        if not isinstance(self._output_token_ids, array):
+            self._output_token_ids = array(
+            'l', self._output_token_ids if self._output_token_ids is not None else [])
+        self._prompt_token_ids_tuple: Tuple[int, ...] = tuple(self._prompt_token_ids)
         self._update_cached_all_tokens()
 
     def _update_cached_all_tokens(self):
@@ -142,9 +156,7 @@ class SequenceData:
 
     @prompt_token_ids.setter
     def prompt_token_ids(self, new_prompt_token_ids) -> None:
-        self._prompt_token_ids = array('l', new_prompt_token_ids)
-        self._prompt_token_ids_tuple = tuple(new_prompt_token_ids)
-        self._update_cached_all_tokens()
+        raise NotImplementedError
 
     @property
     def prompt_token_ids_array(self) -> array:
@@ -165,6 +177,7 @@ class SequenceData:
 
     def append_token_id(self, token_id: int, logprob: float) -> None:
         self._output_token_ids.append(token_id)
+        self._new_appended_tokens.append(token_id)
         self._cached_all_token_ids.append(token_id)
         self.cumulative_logprob += logprob
 
@@ -225,10 +238,25 @@ class SequenceData:
         return self._output_token_ids[-1]
 
     def get_prompt_token_ids(self) -> Tuple[int, ...]:
-        return self.prompt_token_ids
+        return self._prompt_token_ids
 
     def get_output_token_ids(self) -> Tuple[int, ...]:
-        return self.output_token_ids
+        return self._output_token_ids
+
+    def get_delta(self) -> SequenceDataDelta:
+        delta = SequenceDataDelta(self._new_appended_tokens,
+                                  self.cumulative_logprob,
+                                  self.get_num_computed_tokens(), self.stage)
+        # Reset delta state.
+        self._new_appended_tokens = []
+        return delta
+
+    def apply_delta(self, delta: SequenceDataDelta):
+        self._num_computed_tokens = delta.new_num_computed_tokens
+        self.cumulative_logprob = delta.new_cumulative_logprob
+        self._stage = delta.new_stage
+        self._output_token_ids.extend(delta.new_output_token_ids)
+        self._cached_all_token_ids.extend(delta.new_output_token_ids)
 
     @property
     def stage(self) -> SequenceStage:
@@ -237,8 +265,9 @@ class SequenceData:
     def __repr__(self) -> str:
         return (f"SequenceData("
                 f"prompt_token_ids={self._prompt_token_ids}, "
-                f"output_token_ids={self._output_token_ids}, "
-                f"cumulative_logprob={self.cumulative_logprob})")
+                f"output_token_ids={self.output_token_ids}, "
+                f"cumulative_logprob={self.cumulative_logprob}, "
+                f"get_num_computed_tokens={self.get_num_computed_tokens()}")
 
 
 class Sequence:
@@ -621,7 +650,16 @@ class SequenceGroup:
                 f"num_seqs={len(self.seqs_dict)})")
 
 
-class SequenceGroupMetadata:
+class SequenceGroupMetadataDecode(msgspec.Struct, tag=True, array_like=True, omit_defaults=True):
+    """Delta sequence group metadata."""
+    seq_data_delta: Dict[int, SequenceDataDelta]
+    request_id: str
+    block_tables: Dict[int, List[int]]
+    do_sample: bool = True
+    token_chunk_size: Optional[int] = None
+
+
+class SequenceGroupMetadata(msgspec.Struct, tag=True, array_like=True, omit_defaults=True):
     """Metadata for a sequence group. Used to create `AttentionMetadata`.
 
     Args:
@@ -652,49 +690,36 @@ class SequenceGroupMetadata:
         prompt_adapter_request: Prompt Adapter request.
     """
 
-    def __init__(
-        self,
-        request_id: str,
-        is_prompt: bool,
-        seq_data: Dict[int, SequenceData],
-        sampling_params: SamplingParams,
-        block_tables: Dict[int, List[int]],
-        do_sample: bool = True,
-        pooling_params: Optional[PoolingParams] = None,
-        token_chunk_size: Optional[int] = None,
-        lora_request: Optional[LoRARequest] = None,
-        computed_block_nums: Optional[List[int]] = None,
-        multi_modal_data: Optional["MultiModalDataDict"] = None,
-        encoder_seq_data: Optional[SequenceData] = None,
-        cross_block_table: Optional[List[int]] = None,
-        prompt_adapter_request: Optional[PromptAdapterRequest] = None,
-    ) -> None:
-        self.request_id = request_id
-        self.is_prompt = is_prompt
-        self.seq_data = seq_data
-        self.sampling_params = sampling_params
-        self.block_tables = block_tables
-        self.pooling_params = pooling_params
-        self.lora_request = lora_request
-        self.prompt_adapter_request = prompt_adapter_request
-        self.computed_block_nums = computed_block_nums
-        self.multi_modal_data = multi_modal_data
-        self.encoder_seq_data = encoder_seq_data
-        self.cross_block_table = cross_block_table
-        self._token_chunk_size = token_chunk_size
-        self.do_sample = do_sample
+    request_id: str
+    is_prompt: bool
+    seq_data: Dict[int, SequenceData]
+    sampling_params: SamplingParams
+    block_tables: Dict[int, List[int]]
+    do_sample: bool = True
+    # pooling_params: Optional[PoolingParams] = None
+    # lora_request: Optional[LoRARequest] = None
+    computed_block_nums: Optional[List[int]] = None
+    # state: Optional[SequenceGroupState] = None
+    # # from vllm.multimodal import MultiModalDataDict
+    multi_modal_data: Optional[Any] = None
+    # encoder_seq_data: Optional[SequenceData] = None
+    # cross_block_table: Optional[List[int]] = None
+    # prompt_adapter_request: Optional[PromptAdapterRequest] = None
+    token_chunk_size: Optional[int] = None
 
-        # The number of speculative tokens adopted in this request.
-        # None means specuative decoding is not used.
-        # Zero means speculative decoding is disabled for some reasons.
-        # TODO: We should maintain this states out of the sequence group.
-        self.num_speculative_tokens = None
+    ### Stateful fields that are lazily defined. ###
+    # The number of speculative tokens adopted in this request.
+    # None means specuative decoding is not used.
+    # Zero means speculative decoding is disabled for some reasons.
+    # TODO: We should maintain this states out of the sequence group.
+    num_speculative_tokens: Optional[int] = None
 
-        if self._token_chunk_size is None:
-            if is_prompt:
-                self._token_chunk_size = list(seq_data.values())[0].get_len()
+    def __post_init__(self):
+        if self.token_chunk_size is None:
+            if self.is_prompt:
+                self.token_chunk_size = list(self.seq_data.values())[0].get_len()
             else:
-                self._token_chunk_size = 1
+                self.token_chunk_size = 1
 
     @property
     def lora_int_id(self) -> int:
@@ -710,11 +735,18 @@ class SequenceGroupMetadata:
         return self.prompt_adapter_request.prompt_adapter_num_virtual_tokens \
                         if self.prompt_adapter_request else 0
 
-    @property
-    def token_chunk_size(self) -> int:
-        """Return the number of tokens to be processed (chunk size)."""
-        assert self._token_chunk_size is not None
-        return self._token_chunk_size
+    def apply_delta(
+            self, sequence_group_metadata_decode: SequenceGroupMetadataDecode):
+        for id, delta in sequence_group_metadata_decode.seq_data_delta.items():
+            self.seq_data[id].apply_delta(delta)
+        self.request_id = sequence_group_metadata_decode.request_id
+        for seq_id, block_table in sequence_group_metadata_decode.block_tables.items():
+            if len(block_table) > 0:
+                self.block_tables[seq_id].append(block_table[0])
+        # self.block_tables = sequence_group_metadata_decode.block_tables
+        self.token_chunk_size = sequence_group_metadata_decode.token_chunk_size
+        self.do_sample = sequence_group_metadata_decode.do_sample
+        self.is_prompt = False
 
 
 class SequenceOutput:
@@ -931,7 +963,7 @@ def get_all_seq_ids_and_request_ids(
     return seq_ids, request_id_seq_ids_mapping
 
 
-class HiddenStates:
+class HiddenStates(msgspec.Struct, array_like=True, omit_defaults=True):
     """Hidden states corresponding to in-progress sequences.
     Used in speculative decoding to pass hidden states from
     the target model to the proposer model in the subsequent step.
@@ -939,11 +971,11 @@ class HiddenStates:
     seq_ids are the sequence ids of each entry of the batch
     dimension of the hidden_states tensor"""
 
-    def __init__(self, seq_group_metadata_list: List[SequenceGroupMetadata],
-                 hidden_states: torch.Tensor):
-        assert len(seq_group_metadata_list) == len(hidden_states)
-        self.seq_ids: List[int] = get_all_seq_ids(seq_group_metadata_list)
-        self.hidden_states: torch.Tensor = hidden_states
+    seq_ids: List[int]
+    hidden_states: torch.Tensor
+
+    def __post_init__(self):
+        assert len(self.seq_group_metadata_list) == len(self.hidden_states)
 
     def update(self, seq_group_metadata_list: List[SequenceGroupMetadata],
                hidden_states: torch.Tensor) -> None:
@@ -963,18 +995,17 @@ class HiddenStates:
             self.seq_ids = seq_ids
 
 
-@dataclass
-class ExecuteModelRequest:
+class ExecuteModelRequest(msgspec.Struct, array_like=True, omit_defaults=True):
     """The model execution request, containing CPU metadata only. The LLM
     engine should create an instance of this class for each request batch."""
     # The sequence group metadata list.
-    seq_group_metadata_list: List[SequenceGroupMetadata]
+    seq_group_metadata_list: List[Union[SequenceGroupMetadata, SequenceGroupMetadataDecode]]
     # Blocks to swap in. List of CPU -> GPU block number.
-    blocks_to_swap_in: List[Tuple[int, int]] = field(default_factory=list)
+    blocks_to_swap_in: List[Tuple[int, int]] = msgspec.field(default_factory=list)
     # Blocks to swap out. List of GPU -> CPU block number.
-    blocks_to_swap_out: List[Tuple[int, int]] = field(default_factory=list)
+    blocks_to_swap_out: List[Tuple[int, int]] = msgspec.field(default_factory=list)
     # Blocks to copy. Source to dest block.
-    blocks_to_copy: List[Tuple[int, int]] = field(default_factory=list)
+    blocks_to_copy: List[Tuple[int, int]] = msgspec.field(default_factory=list)
     # Virtual engine ID for pipeline parallel.
     virtual_engine: int = 0
     # The number of slots for lookahead decoding.
@@ -986,7 +1017,7 @@ class ExecuteModelRequest:
     # The number of forward steps to run.
     num_steps: int = 1
     # Finished request ids since last step.
-    finished_requests_ids: List[str] = field(default_factory=list)
+    finished_requests_ids: List[str] = msgspec.field(default_factory=list)
 
     def clone(
         self, seq_group_metadata_list: List[SequenceGroupMetadata]

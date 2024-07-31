@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple, Union
 
+import vllm.envs as envs
 from vllm.config import CacheConfig, LoRAConfig, SchedulerConfig
 from vllm.core.interfaces import AllocStatus, BlockSpaceManager
 from vllm.core.policy import Policy, PolicyFactory
@@ -13,7 +14,8 @@ from vllm.logger import init_logger
 from vllm.lora.request import LoRARequest
 from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
-                           SequenceGroupMetadata, SequenceStatus)
+                           SequenceGroupMetadata, SequenceGroupMetadataDecode,
+                           SequenceStatus)
 
 logger = init_logger(__name__)
 
@@ -331,6 +333,8 @@ class Scheduler:
                                        if self.enable_artificial_preemption
                                        else 0)
         self.num_cumulative_preemption: int = 0
+        from collections import defaultdict
+        self._block_table_cache: Dict[int, Dict[int, List[int]]] = defaultdict(dict)
 
     @property
     def lora_enabled(self) -> bool:
@@ -993,10 +997,21 @@ class Scheduler:
             # seq_id -> physical block numbers
             block_tables: Dict[int, List[int]] = {}
 
+            is_prompt = seq_group.is_prefill()
             for seq in seq_group.get_seqs(status=SequenceStatus.RUNNING):
                 seq_id = seq.seq_id
                 seq_data[seq_id] = seq.data
-                block_tables[seq_id] = self.block_manager.get_block_table(seq)
+                if is_prompt or not envs.VLLM_USE_RAY_SPMD_WORKER:
+                    block_table = self.block_manager.get_block_table(seq)
+                    block_tables[seq_id] = block_table
+                    self._block_table_cache[seq_group.request_id][seq_id] = block_table
+                else:
+                    block_table = self.block_manager.get_block_table(seq)
+                    if len(self._block_table_cache[seq_group.request_id][seq_id]) < len(block_table):
+                        block_tables[seq_id] = [block_table[-1]]
+                        self._block_table_cache[seq_group.request_id][seq_id].append(block_table[-1])
+                    else:
+                        block_tables[seq_id] = []
                 self.block_manager.access_all_blocks_in_seq(seq, now)
 
             common_computed_block_nums = (
@@ -1004,7 +1019,7 @@ class Scheduler:
                     seq_group.get_seqs(status=SequenceStatus.RUNNING)))
 
             do_sample = True
-            if seq_group.is_prefill():
+            if is_prompt:
                 seqs = seq_group.get_seqs()
                 # Prefill has only 1 sequence.
                 assert len(seqs) == 1
@@ -1019,26 +1034,40 @@ class Scheduler:
 
             # It assumes the scheduled_seq_groups is ordered by
             # prefill < decoding.
-            is_prompt = seq_group.is_prefill()
-            seq_group_metadata = SequenceGroupMetadata(
-                request_id=seq_group.request_id,
-                is_prompt=is_prompt,
-                seq_data=seq_data,
-                sampling_params=seq_group.sampling_params,
-                block_tables=block_tables,
-                do_sample=do_sample,
-                pooling_params=seq_group.pooling_params,
-                token_chunk_size=token_chunk_size,
-                lora_request=seq_group.lora_request,
-                computed_block_nums=common_computed_block_nums,
-                # `multi_modal_data` will only be present for the 1st comm
-                # between engine and worker.
-                # the subsequent comms can still use delta, but
-                # `multi_modal_data` will be None.
-                multi_modal_data=seq_group.multi_modal_data
-                if scheduler_outputs.num_prefill_groups > 0 else None,
-                prompt_adapter_request=seq_group.prompt_adapter_request,
-            )
+            if is_prompt or not envs.VLLM_USE_RAY_SPMD_WORKER:
+                seq_group_metadata = SequenceGroupMetadata(
+                    request_id=seq_group.request_id,
+                    is_prompt=is_prompt,
+                    seq_data=seq_data,
+                    sampling_params=seq_group.sampling_params,
+                    block_tables=block_tables,
+                    do_sample=do_sample,
+                    # pooling_params=seq_group.pooling_params,
+                    token_chunk_size=token_chunk_size,
+                    # lora_request=seq_group.lora_request,
+                    computed_block_nums=common_computed_block_nums,
+                    # state=seq_group.state,
+                    # # `multi_modal_data` will only be present for the 1st comm
+                    # # between engine and worker.
+                    # # the subsequent comms can still use delta, but
+                    # # `multi_modal_data` will be None.
+                    # multi_modal_data=seq_group.multi_modal_data
+                    # if scheduler_outputs.num_prefill_groups > 0 else None,
+                    # prompt_adapter_request=seq_group.prompt_adapter_request,
+                )
+            else:
+                # Delta is used only for spmd workers.
+                seq_data_delta = {}
+                for id, data in seq_data.items():
+                    seq_data_delta[id] = data.get_delta()
+
+                seq_group_metadata = SequenceGroupMetadataDecode(
+                    seq_data_delta,
+                    seq_group.request_id,
+                    block_tables,
+                    do_sample=do_sample,
+                    token_chunk_size=token_chunk_size,
+                )
             seq_group_metadata_list.append(seq_group_metadata)
 
         # Now that the batch has been created, we can assume all blocks in the
@@ -1048,7 +1077,6 @@ class Scheduler:
         for scheduled_seq_group in scheduler_outputs.scheduled_seq_groups:
             self.block_manager.mark_blocks_as_computed(
                 scheduled_seq_group.seq_group)
-
         return seq_group_metadata_list, scheduler_outputs
 
     def fork_seq(self, parent_seq: Sequence, child_seq: Sequence) -> None:
