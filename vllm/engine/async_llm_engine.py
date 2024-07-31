@@ -3,6 +3,7 @@ import time
 from functools import partial
 from typing import (AsyncIterator, Callable, Dict, Iterable, List, Mapping,
                     Optional, Set, Tuple, Type, Union)
+import cProfile
 
 from transformers import PreTrainedTokenizer
 
@@ -24,6 +25,9 @@ from vllm.prompt_adapter.request import PromptAdapterRequest
 from vllm.sampling_params import SamplingParams
 from vllm.sequence import ExecuteModelRequest, SamplerOutput
 from vllm.usage.usage_lib import UsageContext
+
+import torch
+from torch.profiler import profile, record_function, ProfilerActivity
 
 logger = init_logger(__name__)
 ENGINE_ITERATION_TIMEOUT_S = envs.VLLM_ENGINE_ITERATION_TIMEOUT_S
@@ -390,6 +394,10 @@ class AsyncLLMEngine:
         # Lazy initialized fields
         self._request_tracker: RequestTracker
 
+        # Add optional profiler for profiling
+        import cProfile
+        self._profiler = cProfile.Profile()
+
     @classmethod
     def _get_executor_cls(
             cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
@@ -605,7 +613,15 @@ class AsyncLLMEngine:
             pipeline_parallel_size = \
                 self.engine.parallel_config.pipeline_parallel_size
         has_requests_in_progress = [False] * pipeline_parallel_size
+
+        
+        idx = 0
+
         while True:
+
+            if idx % 10 == 9:
+                profiler = cProfile.Profile()
+                profiler.enable()
             if not any(has_requests_in_progress):
                 logger.debug("Waiting for new requests...")
                 # Stop the execute model loop in parallel workers until there
@@ -616,8 +632,8 @@ class AsyncLLMEngine:
                 # such as add/remove lora adapters.
                 if self.engine_use_ray:
                     await (self.engine.stop_remote_worker_execution_loop.
-                           remote()  # type: ignore
-                           )
+                        remote()  # type: ignore
+                        )
                 else:
                     await self.engine.stop_remote_worker_execution_loop_async()
                 await self._request_tracker.wait_for_new_requests()
@@ -643,9 +659,9 @@ class AsyncLLMEngine:
                     if self.engine_use_ray:
                         has_unfinished_requests = (
                             await (self.engine.
-                                   has_unfinished_requests_for_virtual_engine.
-                                   remote(  # type: ignore
-                                       virtual_engine)))
+                                has_unfinished_requests_for_virtual_engine.
+                                remote(  # type: ignore
+                                    virtual_engine)))
                     else:
                         has_unfinished_requests = (
                             self.engine.
@@ -664,6 +680,12 @@ class AsyncLLMEngine:
                 self.set_errored(exc)
                 raise
             await asyncio.sleep(0)
+            
+            if idx % 10 == 9:
+                profiler.disable()
+                stats_filename = f'log/{idx}.lprof'
+                profiler.dump_stats(stats_filename)
+            idx = idx + 1
 
     async def add_request(
         self,
