@@ -499,22 +499,31 @@ class Phi3VForCausalLM(nn.Module, SupportsVision):
             self, **kwargs: object) -> Optional[Phi3VImagePixelInputs]:
         pixel_values = kwargs.pop("pixel_values", None)
         image_sizes = kwargs.pop("image_sizes", None)
+        image_embeds = kwargs.pop("image_embeds", None)
 
         if pixel_values is None:
             return None
 
-        if not isinstance(pixel_values, (torch.Tensor, list)):
-            raise ValueError("Incorrect type of pixel values. "
-                             f"Got type: {type(pixel_values)}")
+        if pixel_values is None and image_embeds is None:
+            return None
 
-        if not isinstance(image_sizes, torch.Tensor):
-            raise ValueError("Incorrect type of image sizes. "
-                             f"Got type: {type(image_sizes)}")
+        if pixel_values is not None:
+            if not isinstance(pixel_values, (torch.Tensor, list)):
+                raise ValueError("Incorrect type of pixel values. "
+                                 f"Got type: {type(pixel_values)}")
 
-        return Phi3VImagePixelInputs(
-            type="pixel_values",
-            data=self._validate_pixel_values(pixel_values),
-            image_sizes=self._validate_image_sizes(image_sizes))
+            if not isinstance(image_sizes, torch.Tensor):
+                raise ValueError("Incorrect type of image sizes. "
+                                 f"Got type: {type(image_sizes)}")
+
+            return Phi3VImagePixelInputs(
+                type="pixel_values",
+                data=self._validate_pixel_values(pixel_values),
+                image_sizes=self._validate_image_sizes(image_sizes))
+
+        # TODO: Enable image embeddings for Phi3-Vision
+        if image_embeds is not None:
+            raise NotImplementedError("Embeddings input is not supported yet")
 
     def forward(self,
                 input_ids: torch.Tensor,
