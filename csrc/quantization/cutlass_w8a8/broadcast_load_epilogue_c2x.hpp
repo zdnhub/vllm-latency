@@ -62,7 +62,8 @@ using namespace detail;
 template<
   class ThreadMap,
   class Element,
-  class StrideMNL
+  class StrideMNL,
+  bool EnableNullptr = false
 >
 struct VisitorRowOrScalarBroadcast {
 
@@ -71,6 +72,7 @@ struct VisitorRowOrScalarBroadcast {
   struct Arguments {
     Element const* ptr_row = nullptr;
     bool row_broadcast = true;
+    Element null_default = Element(0);
     StrideMNL dRow = {};
   };
 
@@ -134,7 +136,31 @@ struct VisitorRowOrScalarBroadcast {
       auto coord_v = filter(tC_cRow);
       auto dst_v = filter(tC_rRow);
 
-      if (params_ptr->row_broadcast) {
+      // Fill dst_v with the scalar value
+      auto fill_dst = [&](Element const& value) {
+        VecType filled_vec;
+        CUTLASS_PRAGMA_UNROLL
+        for (int i = 0; i < VecLength; i++) {
+          reinterpret_cast<Element*>(&filled_vec)[i] = value;
+        }
+
+        CUTLASS_PRAGMA_UNROLL
+        for (int i = 0; i < size(src_v); ++i) {
+          if (get<1>(coord_v(i)) < n) {
+            dst_v(i) = filled_vec;
+          }
+        }
+      };
+
+      if constexpr(EnableNullptr) {
+        if (params_ptr->ptr_row == nullptr) {
+          fill_dst(params_ptr->null_default);
+          return;
+        }
+      }
+
+      // if nullptr is enabled but not present, always row broadcast
+      if (EnableNullptr || params_ptr->row_broadcast) {
         // In this case we are loading from a row vector and broadcasting
         CUTLASS_PRAGMA_UNROLL
         for (int i = 0; i < size(src_v); ++i) {
@@ -213,7 +239,8 @@ struct VisitorRowOrScalarBroadcast {
 template<
   class ThreadMap,
   class Element,
-  class StrideMNL = Stride<_1,_0,_0>
+  class StrideMNL = Stride<_1,_0,_0>,
+  bool EnableNullptr = false
 >
 struct VisitorColOrScalarBroadcast {
 
@@ -222,6 +249,7 @@ struct VisitorColOrScalarBroadcast {
   struct Arguments {
     Element const* ptr_col = nullptr;
     bool col_broadcast = true;
+    Element null_default = Element(0);
     StrideMNL dCol = {};
   };
 
@@ -283,7 +311,26 @@ struct VisitorColOrScalarBroadcast {
         pred(i) = get<0>(tC_cCol(i)) < m;
       }
 
-      if (params_ptr->col_broadcast) {
+      auto fill_dst = [&](Element const& value) {
+        auto dst_v = filter(tC_rCol);
+
+        CUTLASS_PRAGMA_UNROLL
+        for (int i = 0; i < size(dst_v); ++i) {
+          if (pred(i)) {
+            dst_v(i) = value;
+          }
+        }
+      };
+
+      if constexpr(EnableNullptr) {
+        if (params_ptr->ptr_col == nullptr) {
+          fill_dst(params_ptr->null_default);
+          return;
+        }
+      }
+
+      // if nullptr is enabled but not present, always col broadcast
+      if (EnableNullptr || params_ptr->col_broadcast) {
         // In this case we are loading from a column vector and broadcasting
         copy_if(pred, tC_gCol, tC_rCol);
       } else {

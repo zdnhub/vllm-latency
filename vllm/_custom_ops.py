@@ -243,6 +243,8 @@ def cutlass_scaled_mm(a: torch.Tensor,
                       bias: Optional[torch.Tensor] = None) -> torch.Tensor:
     assert (b.shape[0] % 16 == 0 and b.shape[1] % 16 == 0)
     assert (out_dtype is torch.bfloat16 or out_dtype is torch.float16)
+    assert bias is None or bias.shape[0] == b.shape[
+        1] and bias.dtype == out_dtype
 
     m = a.shape[0]
     n = b.shape[1]
@@ -250,6 +252,28 @@ def cutlass_scaled_mm(a: torch.Tensor,
 
     torch.ops._C.cutlass_scaled_mm(out, a, b, scale_a, scale_b, bias)
 
+    return out
+
+
+def cutlass_scaled_mm_azp(a: torch.Tensor,
+                          b: torch.Tensor,
+                          scale_a: torch.Tensor,
+                          scale_b: torch.Tensor,
+                          out_dtype: Type[torch.dtype],
+                          azp_adj: torch.Tensor,
+                          azp: Optional[torch.Tensor] = None,
+                          bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+    assert (b.shape[0] % 16 == 0 and b.shape[1] % 16 == 0)
+    assert (out_dtype is torch.bfloat16 or out_dtype is torch.float16)
+    assert bias is None or bias.numel(
+    ) == b.shape[1] and bias.dtype == out_dtype
+
+    m = a.shape[0]
+    n = b.shape[1]
+    out = torch.empty((m, n), dtype=out_dtype, device=a.device)
+
+    torch.ops._C.cutlass_scaled_mm_azp(out, a, b, scale_a, scale_b, azp_adj,
+                                       azp, bias)
     return out
 
 
@@ -361,16 +385,21 @@ def scaled_fp8_quant(
 
 # int8
 def scaled_int8_quant(
-        input: torch.Tensor,
-        scale: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    input: torch.Tensor,
+    scale: Optional[torch.Tensor] = None,
+    azp: Optional[torch.Tensor] = None,
+    symmetric: bool = True
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     """
-    Quantize the input tensor to int8 and return the quantized tensor and scale.
+    Quantize the input tensor to int8 and return the quantized tensor and scale, and maybe azp.
 
     Args:
         input: The input tensor to be quantized to int8.
         scale: Optional scaling factor for the int8 quantization.
             When not provided, we invoke dynamic-per-token quantization.
+        azp: Optional zero-point for the int8 quantization.
+            Must be provided for asymmetric quantization if `scale` is provided.
+        symmetric: Whether to use symmetric quantization (scale only, azp ignored).
 
     Returns:
       Tuple[Torch.Tensor, Torch.Tensor] : Output int8 tensor and scales.
@@ -378,15 +407,19 @@ def scaled_int8_quant(
     output = torch.empty_like(input, dtype=torch.int8)
     if scale is not None:
         # static-per-tensor quantization.
-        torch.ops._C.static_scaled_int8_quant(output, input, scale)
-        return output, scale
+        assert symmetric == azp is None, "azp must be only be provided for asymmetric quantization."
+        torch.ops._C.static_scaled_int8_quant(output, input, scale, azp)
+        return output, scale, None
 
     # dynamic-per-token quantization.
     input_scales = torch.empty((input.numel() // input.shape[-1], 1),
                                device=input.device,
                                dtype=torch.float32)
-    torch.ops._C.dynamic_scaled_int8_quant(output, input, input_scales)
-    return output, input_scales
+    input_azp = None if symmetric else torch.empty_like(input_scales,
+                                                        dtype=torch.int32)
+    torch.ops._C.dynamic_scaled_int8_quant(output, input, input_scales,
+                                           input_azp)
+    return output, input_scales, input_azp
 
 
 # moe
@@ -562,7 +595,7 @@ for k, v in names_and_values.items():
     if isinstance(v, fn_type) \
         and v.__code__.co_filename == __file__ \
         and any(arg is torch.Tensor or arg == "torch.Tensor"
-                   for arg in v.__annotations__.values()):
+                for arg in v.__annotations__.values()):
         names_and_values_to_update[k] = hint_on_error(v)
 
 names_and_values.update(names_and_values_to_update)
