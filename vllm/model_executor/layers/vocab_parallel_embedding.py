@@ -1,9 +1,10 @@
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn.functional as F
-from torch.nn.parameter import Parameter
+from torch.nn.parameter import Parameter, UninitializedParameter
 
 from vllm.distributed import (divide, get_tensor_model_parallel_rank,
                               get_tensor_model_parallel_world_size,
@@ -14,6 +15,47 @@ from vllm.model_executor.layers.quantization.base_config import (
 from vllm.model_executor.utils import set_weight_attrs
 
 DEFAULT_VOCAB_PADDING_SIZE = 64
+
+
+class EmbeddingMethodBase(QuantizeMethodBase):
+    """Base class for different quantized methods."""
+
+    @abstractmethod
+    def create_weights(self, layer: torch.nn.Module, *weight_args,
+                       **extra_weight_attrs):
+        """Create weights for a layer.
+
+        The weights will be set as attributes of the layer."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def apply(self, layer: torch.nn.Module, *args, **kwargs) -> torch.Tensor:
+        """Apply the weights in embeddings layer to the input tensor.
+        
+        Expects create_weights to have been called before on the layer."""
+        raise NotImplementedError
+
+
+class UnquantizedEmbeddingMethod(EmbeddingMethodBase):
+    """Unquantized method for embeddings."""
+
+    def create_weights(self, layer: torch.nn.Module,
+                       input_size_per_partition: int,
+                       output_partition_sizes: List[int], input_size: int,
+                       output_size: int, params_dtype: torch.dtype,
+                       **extra_weight_attrs):
+        """Create weights for embedding layer."""
+        weight = Parameter(torch.empty(sum(output_partition_sizes),
+                                       input_size_per_partition,
+                                       dtype=params_dtype),
+                           requires_grad=False)
+        set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
+        layer.register_parameter("weight", weight)
+        set_weight_attrs(weight, extra_weight_attrs)
+
+    def apply(self, layer: torch.nn.Module,
+              input_: torch.Tensor) -> torch.Tensor:
+        return F.embedding(input_, layer.weight)
 
 
 def pad_vocab_size(vocab_size: int,
@@ -195,12 +237,17 @@ class VocabParallelEmbedding(torch.nn.Module):
                                                self.tp_size)
         self.embedding_dim = embedding_dim
 
-        linear_method = None
+        embedding_method, linear_method = None, None
         if quant_config is not None:
-            linear_method = quant_config.get_quant_method(self, prefix=prefix)
+            methods = quant_config.get_quant_method(self, prefix=prefix)
+            if methods is not None:
+                embedding_method, linear_method = methods
+        if embedding_method is None:
+            embedding_method = UnquantizedEmbeddingMethod()
         if linear_method is None:
             linear_method = UnquantizedLinearMethod()
-        self.linear_method: QuantizeMethodBase = linear_method
+        self.embedding_method = embedding_method
+        self.linear_method = linear_method
 
         if params_dtype is None:
             params_dtype = torch.get_default_dtype()
@@ -306,6 +353,14 @@ class VocabParallelEmbedding(torch.nn.Module):
         output_dim = getattr(param, "output_dim", None)
         packed_dim = getattr(param, "packed_dim", None)
 
+        # If the parameter is a gguf weight, then load it directly.
+        if getattr(param, "is_gguf_weight_type", None):
+            param.data.copy_(loaded_weight)
+            param.weight_type = loaded_weight.item()
+            return
+        elif isinstance(param, UninitializedParameter):
+            param.materialize(loaded_weight.shape, dtype=loaded_weight.dtype)
+
         # If parameter does not have output dim, then it should
         # be copied onto all gpus (e.g. g_idx for act_order gptq).
         if output_dim is None:
@@ -344,7 +399,8 @@ class VocabParallelEmbedding(torch.nn.Module):
         else:
             masked_input = input_
         # Get the embeddings.
-        output_parallel = F.embedding(masked_input.long(), self.weight)
+        output_parallel = self.embedding_method.apply(self,
+                                                      masked_input.long())
         # Mask the output embedding.
         if self.tp_size > 1:
             output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
@@ -389,6 +445,8 @@ class ParallelLMHead(VocabParallelEmbedding):
         super().__init__(num_embeddings, embedding_dim, params_dtype,
                          org_num_embeddings, padding_size, quant_config,
                          prefix)
+        if isinstance(self.linear_method, UnquantizedEmbeddingMethod):
+            self.linear_method = UnquantizedLinearMethod()
         if bias:
             self.bias = Parameter(
                 torch.empty(self.num_embeddings_per_partition,

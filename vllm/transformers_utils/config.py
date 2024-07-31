@@ -1,7 +1,10 @@
 import contextlib
-from typing import Dict, Optional, Type
+from pathlib import Path
+from typing import Dict, Optional, Type, Union
 
 from transformers import GenerationConfig, PretrainedConfig
+from transformers.models.auto.modeling_auto import (
+    MODEL_FOR_CAUSAL_LM_MAPPING_NAMES)
 
 from vllm.envs import VLLM_USE_MODELSCOPE
 from vllm.logger import init_logger
@@ -36,18 +39,24 @@ for name, cls in _CONFIG_REGISTRY.items():
         AutoConfig.register(name, cls)
 
 
-def get_config(model: str,
+def get_config(model: Union[str, Path],
                trust_remote_code: bool,
                revision: Optional[str] = None,
                code_revision: Optional[str] = None,
                rope_scaling: Optional[dict] = None,
                rope_theta: Optional[float] = None) -> PretrainedConfig:
+    is_gguf = Path(model).is_file() and Path(model).suffix == ".gguf"
+    gguf_file = None
+    if is_gguf:
+        gguf_file = Path(model).name
+        model = Path(model).parent
     try:
         config = AutoConfig.from_pretrained(
             model,
             trust_remote_code=trust_remote_code,
             revision=revision,
-            code_revision=code_revision)
+            code_revision=code_revision,
+            gguf_file=gguf_file)
     except ValueError as e:
         if (not trust_remote_code and
                 "requires you to execute the configuration file" in str(e)):
@@ -64,12 +73,19 @@ def get_config(model: str,
         config = config_class.from_pretrained(model,
                                               revision=revision,
                                               code_revision=code_revision)
+
+    if config.model_type in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES and is_gguf:
+        model_type = MODEL_FOR_CAUSAL_LM_MAPPING_NAMES[config.model_type]
+        config.update({"architectures": [model_type]})
+    elif config.model_type not in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES and is_gguf:
+        raise RuntimeError(f"Can't get gguf config for {config.model_type}.")
     for key, value in [("rope_scaling", rope_scaling),
                        ("rope_theta", rope_theta)]:
         if value is not None:
             logger.info("Updating %s from %r to %r", key,
                         getattr(config, key, None), value)
             config.update({key: value})
+
     return config
 
 
