@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Dict, FrozenSet, List, Optional, Protocol, Tuple
 
+import torch
+
 from vllm.utils import Device
 
 BlockId = int
@@ -264,6 +266,16 @@ class DeviceAwareBlockAllocator(ABC):
     @abstractmethod
     def swap(self, blocks: List[Block], src_device: Device,
              dst_device: Device) -> Dict[int, int]:
+        pass
+
+    @abstractmethod
+    async def get_kv_cache_from_block(self,
+                                      block: Block) -> List[torch.Tensor]:
+        pass
+
+    @abstractmethod
+    async def put_kv_cache_into_block(self, block: Block,
+                                      kv_cache: List[torch.Tensor]) -> None:
         pass
 
     @abstractmethod

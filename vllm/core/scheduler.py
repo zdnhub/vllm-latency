@@ -128,6 +128,12 @@ class SchedulerOutputs:
     ignored_seq_groups: List[SequenceGroup]
     # The number of slots for lookahead decoding.
     num_lookahead_slots: int
+    # Buffer containing the KV cache (torch.Tensor) and
+    # the Block we want to add it to
+    kv_to_block_buffer: List[int]
+    # Buffer containing the block we want to extract
+    # the KV cache (torch.Tensor) from
+    kv_from_block_buffer: List[int]
     # The number of requests in the running queue
     running_queue_size: int
     preempted: int
@@ -192,6 +198,13 @@ class SchedulerRunningOutputs:
     # The number of slots for lookahead decoding.
     num_lookahead_slots: int
 
+    # Buffer containing the KV cache (torch.Tensor) and
+    # the Block we want to add it to
+    kv_to_block_buffer: List[int]
+    # Buffer containing the block we want to extract
+    # the KV cache (torch.Tensor) from
+    kv_from_block_buffer: List[int]
+
     @classmethod
     def create_empty(cls) -> "SchedulerRunningOutputs":
         return SchedulerRunningOutputs(
@@ -202,6 +215,8 @@ class SchedulerRunningOutputs:
             blocks_to_swap_out=[],
             blocks_to_copy=[],
             num_lookahead_slots=0,
+            kv_to_block_buffer=[],
+            kv_from_block_buffer=[],
         )
 
 
@@ -429,6 +444,13 @@ class Scheduler:
         blocks_to_swap_out: List[Tuple[int, int]] = []
         blocks_to_copy: List[Tuple[int, int]] = []
 
+        # should we use ctypes to malloc a buffer and return a ptr?
+        kv_to_block_buffer: List[int] = []
+
+        # currently, neither this nor the previous
+        # object are modified within this function
+        kv_from_block_buffer: List[int] = []
+
         decode_seq_groups: List[ScheduledSequenceGroup] = []
         prefill_seq_groups: List[ScheduledSequenceGroup] = []
         preempted: List[SequenceGroup] = []
@@ -511,7 +533,9 @@ class Scheduler:
             blocks_to_swap_out=blocks_to_swap_out,
             blocks_to_copy=blocks_to_copy,
             num_lookahead_slots=self._get_num_lookahead_slots(
-                is_prefill=False))
+                is_prefill=False),
+            kv_to_block_buffer=kv_to_block_buffer,
+            kv_from_block_buffer=kv_from_block_buffer),
 
     def _schedule_swapped(
         self,
@@ -850,6 +874,8 @@ class Scheduler:
             blocks_to_swap_out=running_scheduled.blocks_to_swap_out,
             blocks_to_copy=running_scheduled.blocks_to_copy +
             swapped_in.blocks_to_copy,
+            kv_to_block_buffer=running_scheduled.kv_to_block_buffer,
+            kv_from_block_buffer=running_scheduled.kv_from_block_buffer,
             ignored_seq_groups=prefills.ignored_seq_groups +
             swapped_in.infeasible_seq_groups,
             num_lookahead_slots=running_scheduled.num_lookahead_slots,
@@ -939,6 +965,8 @@ class Scheduler:
             blocks_to_swap_out=running_scheduled.blocks_to_swap_out,
             blocks_to_copy=running_scheduled.blocks_to_copy +
             swapped_in.blocks_to_copy,
+            kv_to_block_buffer=running_scheduled.kv_to_block_buffer,
+            kv_from_block_buffer=running_scheduled.kv_from_block_buffer,
             ignored_seq_groups=prefills.ignored_seq_groups +
             swapped_in.infeasible_seq_groups,
             num_lookahead_slots=running_scheduled.num_lookahead_slots,
