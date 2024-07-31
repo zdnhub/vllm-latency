@@ -27,7 +27,7 @@ from vllm.spec_decode.ngram_worker import NGramWorker
 from vllm.spec_decode.proposer_worker_base import ProposerWorkerBase
 from vllm.spec_decode.smaller_tp_proposer_worker import SmallerTpProposerWorker
 from vllm.spec_decode.target_model_runner import TargetModelRunner
-from vllm.spec_decode.util import (create_sequence_group_output,
+from vllm.spec_decode.util import (Timer, create_sequence_group_output,
                                    get_all_num_logprobs,
                                    get_sampled_token_logprobs, nvtx_range,
                                    split_batch_by_proposal_len)
@@ -525,28 +525,37 @@ class SpecDecodeWorker(LoraNotSupportedWorkerBase):
         execute_model_req.previous_hidden_states = self.previous_hidden_states
         self.previous_hidden_states = None
 
-        # Generate proposals using draft worker.
-        proposals = self.proposer_worker.get_spec_proposals(
-            execute_model_req, self._seq_with_bonus_token_in_last_step)
+        with Timer() as proposal_timer:
+            # Generate proposals using draft worker.
+            proposals = self.proposer_worker.get_spec_proposals(
+                execute_model_req, self._seq_with_bonus_token_in_last_step)
 
         if not self._allow_zero_draft_token_step and proposals.no_proposals:
             #TODO: Fix it #5814
             raise RuntimeError("Cannot handle cases where distributed draft "
                                "workers generate no tokens")
 
-        proposal_scores = self.scorer.score_proposals(
-            execute_model_req,
-            proposals,
-        )
-        accepted_token_ids, target_logprobs = self._verify_tokens(
-            execute_model_req.seq_group_metadata_list, proposal_scores,
-            proposals, execute_model_req.num_lookahead_slots)
+        with Timer() as scoring_timer:
+            proposal_scores = self.scorer.score_proposals(
+                execute_model_req,
+                proposals,
+            )
+
+        with Timer() as verification_timer:
+            accepted_token_ids, target_logprobs = self._verify_tokens(
+                execute_model_req.seq_group_metadata_list, proposal_scores,
+                proposals, execute_model_req.num_lookahead_slots)
+
+        stage_times = (proposal_timer.elapsed_time_ms / num_lookahead_slots,
+                       scoring_timer.elapsed_time_ms,
+                       verification_timer.elapsed_time_ms)
 
         return self._create_output_sampler_list(
             execute_model_req.seq_group_metadata_list,
             accepted_token_ids,
             target_logprobs=target_logprobs,
-            k=execute_model_req.num_lookahead_slots)
+            k=execute_model_req.num_lookahead_slots,
+            stage_times=stage_times)
 
     @nvtx_range("spec_decode_worker._verify_tokens")
     def _verify_tokens(
@@ -645,6 +654,7 @@ class SpecDecodeWorker(LoraNotSupportedWorkerBase):
         accepted_token_ids: torch.Tensor,  # shape: [batch_size, k+1]
         target_logprobs: torch.Tensor,  # shape: [batch_size, k+1, vocab_size]
         k: int,
+        stage_times: Tuple[float, float, float],
     ) -> List[SamplerOutput]:
         """Given the accepted token ids, create a list of SamplerOutput.
 
@@ -722,6 +732,19 @@ class SpecDecodeWorker(LoraNotSupportedWorkerBase):
         if maybe_rejsample_metrics is not None:
             sampler_output_list[
                 0].spec_decode_worker_metrics = maybe_rejsample_metrics
+
+            (average_time_per_proposal_tok_ms, scoring_time_ms,
+             verification_time_ms) = stage_times
+
+            # Log time spent in each stage periodically.
+            # This is periodic because the rejection sampler emits metrics
+            # periodically.
+            logger.info(
+                "SpecDecodeWorker stage times: "
+                "average_time_per_proposal_tok_ms=%.02f "
+                "scoring_time_ms=%.02f verification_time_ms=%.02f",
+                average_time_per_proposal_tok_ms, scoring_time_ms,
+                verification_time_ms)
         return sampler_output_list
 
     def _create_dummy_logprob_lists(
