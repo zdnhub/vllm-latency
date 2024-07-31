@@ -15,6 +15,9 @@ from vllm.attention.backends.utils import (PAD_SLOT_ID, compute_slot_mapping,
                                            is_block_tables_empty)
 from vllm.utils import make_tensor_with_pad
 
+from vllm.distributed import get_disagg_group
+import vllm.envs as envs
+
 if TYPE_CHECKING:
     from vllm.worker.model_runner import ModelInputForGPUBuilder
 
@@ -489,6 +492,15 @@ class FlashAttentionImpl(AttentionImpl):
                 k_scale,
                 v_scale,
             )
+
+            # send out the KV cache when current vllm is prefill instance
+            # the corresponding receive code is in vllm/worker/model_runner.py
+            if all([
+                envs.VLLM_DISAGG_PREFILL_ROLE == "prefill",
+                attn_metadata.prefill_metadata is not None]):
+                
+                get_disagg_group().push(key)
+                get_disagg_group().push(value)
 
         num_prefill_tokens = attn_metadata.num_prefill_tokens
         num_decode_tokens = attn_metadata.num_decode_tokens
